@@ -27,7 +27,7 @@ namespace ejungwoo
   parContainer *conf(const char *nameConf);
 
   parCanvas fParCvs;
-  const char *fNameCanvasConf = "ppt";
+  const char *fNameCanvasConf = "single";
   void setCanvasPar(parContainer *par);
 
   parAttribute fParAtt;
@@ -237,7 +237,7 @@ ejungwoo::binning2 ejungwoo::binning::operator*(const binning binn) {
 }
 
 
-/// Get configuration parameter container from ejungwoo.[nameConf].conf file.
+/// Get configuration parameter container from [nameConf].conf file.
 KBParameterContainer *ejungwoo::conf(const char *nameConf)
 {
   KBParameterContainer *par = nullptr;
@@ -245,7 +245,12 @@ KBParameterContainer *ejungwoo::conf(const char *nameConf)
   else par = (KBParameterContainer *) fParameterArray -> FindObject(nameConf);
   if (par==nullptr) {
     par = (KBParameterContainer *) fParameterArray -> ConstructedAt(fParameterArray -> GetEntriesFast());
-    par -> AddFile(Form("ejungwoo.%s.conf",nameConf));
+    const char *inputFull = Form("%s/%s.conf",gSystem -> Getenv("EJUNGWOOINPUTPATH"),nameConf);
+    cout << inputFull << endl;
+    if (gSystem -> Which(".",inputFull)==nullptr)
+      par -> AddFile(Form("%s.conf",nameConf));
+    else
+      par -> AddFile(inputFull);
     par -> SetName(nameConf);
   }
   return par;
@@ -299,7 +304,7 @@ void ejungwoo::setAttributePar(parContainer *par)
 
 /// Create canvas with nameCvs and division number nx and ny.
 /// Set nx and ny is 1 for single pad canvas.
-/// Configuration of the canvas(+ histogram and legned) is set by ejungwoo.[nameConf].conf file.
+/// Configuration of the canvas(+ histogram and legned) is set by [nameConf].conf file.
 TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameConf)
 {
   if (strcmp(nameCvs,"")==0)
