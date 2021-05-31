@@ -7,13 +7,16 @@ namespace ejungwoo
   class binning2; ///< 2-dimensional binning class
   typedef KBParameterContainer parContainer; ///< parameter container (for configuration) class.
 
-  class parCanvas { public:
-      int font, menuSize, padSize[2], marginInn[4], marginTop[4], marginDiv[2] ,axisNdivision[3], titleAlign[4], titleColor[4];
-      bool removeInnerPadAxis, removeInnerMainTitle, removeInnerZaxis, titleRotate[4];
-      double tickSize[3], labelSize[3], labelOffset[3], titleSize[4], titleOffset[4];
+  class parCanvas {
+    public:
+    int font, menuSize, padSize[2], marginInn[4], marginTop[4], marginDiv[2] ,axisNdivision[3], titleAlign[4], titleColor[4];
+    bool removeInnerPadAxis, removeInnerMainTitle, removeInnerZaxis, titleRotate[4];
+    double tickSize[3], labelSize[3], labelOffset[3], titleSize[4], titleOffset[4];
   };
-  class parAttribute { public:
-      vector<int> colorArrayMain, colorArrayFaint, colorArrayDark;
+  class parAttribute {
+    public:
+    vector<int> lineStyle, lineWidth, lineColor, markerStyle, markerColor, fillColor, fillStyle;
+    vector<double> markerSize;
   };
 
 
@@ -24,7 +27,7 @@ namespace ejungwoo
   parContainer *conf(const char *nameConf);
 
   parCanvas fParCvs;
-  const char *fNameCanvasConf = "hist1";
+  const char *fNameCanvasConf = "ppt";
   void setCanvasPar(parContainer *par);
 
   parAttribute fParAtt;
@@ -32,17 +35,20 @@ namespace ejungwoo
   void setAttributePar(parContainer *par);
 
 
-  TCanvas* canvas(const char *nameCvs, int nx, int ny, const char *nameConf="");
-  TCanvas* canvas(const char *nameCvs, const char *nameConf="") { return canvas(nameCvs, 1, 1, nameConf); }
-  TH1*     make  (TH1*     hist,   TVirtualPad *vpad, int idx=0, const char *drawOption="");
-  TH1*     draw  (TH1*     hist,   TVirtualPad *vpad, int idx=0, const char *drawOption="");
-  TGaxis*  drawz (TH1*     hist,   TVirtualPad *vpad, int idx=0, const char *titlez="");
-  TLegend* make  (TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
-  TLegend* draw  (TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
+  TCanvas* canvas (const char *nameCvs, int nx, int ny, const char *nameConf="");
+  TCanvas* canvas (const char *nameCvs="", const char *nameConf="") { return canvas(nameCvs, 1, 1, nameConf); }
+  TH1*     make   (TH1*     hist,   TVirtualPad *vpad, int idx=0, const char *drawOption="");
+  TH1*     draw   (TH1*     hist,   TVirtualPad *vpad, int idx=0, const char *drawOption="");
+  TGaxis*  drawz  (TH1*     hist,   TVirtualPad *vpad, int idx=0, const char *titlez="");
+  TLegend* make   (TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
+  TLegend* draw   (TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
   void saveAll(const char *nameVersion="");
 
 
-  void att(TObject *obj, const char *nameConf="");
+  TObject *att(TObject *obj, int idx=0, const char *nameConf="");
+
+
+  //TH1* differential(TH1* hist, int diff_axis_123=1);
 
 
   TString toString(double value);
@@ -59,13 +65,27 @@ class ejungwoo::binning
     int fIdx = 0; ///< index for iteration
     const char *fTitle = "";
     const char *fExpression = "";
+    const char *fSelection = "";
 
   public:
     binning() : fN(0), fMin(0), fMax(0) {}
-    binning(int n, double min, double max, const char *ttl="", const char *expression="") : fN(n), fMin(min), fMax(max), fTitle(ttl), fExpression(expression) { init(); }
+    binning(int n, double min, double max, const char *ttl="", const char *expression="", const char *selection="") : fN(n), fMin(min), fMax(max), fTitle(ttl), fExpression(expression), fSelection(selection) { init(); }
+    binning(TTree *tree, const char *branchName) : binning() { make(tree, branchName); }
+    binning(TH1 *hist, int axis_123=1) : binning() { make(hist, axis_123); }
     ~binning() {}
 
     void init() { if (fW>0&&fN<1) setW(fW); else if (fN>0&&fW<1) setN(fN); }
+    void make(TH1 *hist, int axis_123=1) {
+      TAxis *axis;
+           if (axis_123==2) axis = hist -> GetYaxis();
+      else if (axis_123==3) axis = hist -> GetZaxis();
+      else                  axis = hist -> GetXaxis();
+
+      fN = axis -> GetNbins();
+      fMin = axis -> GetBinLowEdge(1);
+      fMax = axis -> GetBinUpEdge(fN);
+      init();
+    }
     void make(TTree *tree, const char* branchName) {
       if (fN<1) fN = 100;
       if (tree==nullptr) return;
@@ -85,14 +105,16 @@ class ejungwoo::binning
     void setW         (double w)                 { fW = w; fN = int((fMax-fMin)/fW); }
     void setTitle     (const char *ttl)          { fTitle = ttl; }
     void setExpression(const char *expression)   { fExpression = expression; }
+    void setSelection(const char *selection)     { fSelection = selection; }
 
-    void set(double n, double min, double max, const char *ttl="", const char *expression="") {
+    void set(double n, double min, double max, const char *ttl="", const char *expression="", const char *selection="") {
       fN = n;
       fMin = min;
       fMax = max;
       fW = (fMax-fMin)/fN;
       if (strcmp(ttl,"")!=0) fTitle = ttl;
       if (strcmp(expression,"")!=0) fExpression = expression;
+      if (strcmp(selection,"")!=0) fSelection = selection;
     }
 
     bool   isNull()               const { if (fN<1||(fMin==0&&fMax==0)) return true; return false; }
@@ -102,6 +124,7 @@ class ejungwoo::binning
     double getW()                 const { return fW; }
     const char *getTitle()        const { return fTitle; }
     const char *getExpression()   const { return fExpression; }
+    const char *getSelection()    const { return fSelection; }
 
     //iterator
     void reset() { fIdx = 0; }
@@ -130,6 +153,12 @@ class ejungwoo::binning
       return (new TH1D(name,titlexy,fN,fMin,fMax));
     }
 
+    TH1D *project(TTree *tree, const char *selection, const char *name, const char *title="") {
+      auto hist = newHist(name,title);
+      tree -> Project(name,fExpression,selection);
+      return hist;
+    }
+
     TString print(bool pout=1) const
     {
       TString minString = ejungwoo::toString(fMin);
@@ -149,6 +178,7 @@ class ejungwoo::binning
       fW = binn.getW();
       fTitle = binn.getTitle();
       fExpression = binn.getExpression();
+      fSelection = binn.getSelection();
     }
 
     ejungwoo::binning2 operator*(const binning binn);
@@ -158,6 +188,15 @@ class ejungwoo::binning
 
 class ejungwoo::binning2
 {
+  private:
+    const char *justTitle(const char *val) const {
+      if (strcmp(val,"")==0)
+        return "";
+      auto tokens = TString(val).Tokenize(";");
+      const char *title = ((TObjString *) tokens->At(0))->GetString();
+      return title;
+    }
+
   public :
     const char *fTitleX = "";
     const char *fExpressionX = "";
@@ -175,17 +214,20 @@ class ejungwoo::binning2
       : fTitleX(titleX), fExpressionX(expX), fNX(nX), fMinX(minX), fMaxX(maxX), fTitleY(titleY) ,fExpressionY(expY), fNY(nY), fMinY(minY), fMaxY(maxY) {}
 
     TH2D *newHist(const char *nameHist, const char *titleHist="") {
-      auto titlexy = Form("%s;%s;%s;",titleHist,fTitleX,fTitleY);
+      auto titlexy = Form("%s;%s;%s;",titleHist,justTitle(fTitleX),justTitle(fTitleY));
       auto hist = new TH2D(nameHist,titlexy,fNX,fMinX,fMaxX,fNY,fMinY,fMaxY);
       return hist;
     }
 
-    const char *expr()     { return Form("%s:%s",fExpressionY,fExpressionX); }
-    const char *namexy()   { return Form("%s%s",fExpressionX,fExpressionY); }
-    const char *namexynn() { return Form("%s%d%s%d",fExpressionX,fNX,fExpressionY,fNY); }
+    const char *getExpression()   const { return Form("%s:%s",fExpressionY,fExpressionX); }
+    const char *getSelection()    const { return ""; }
 
-    binning bx() { return binning(fNX,fMinX,fMaxX,fTitleX,fExpressionX); }
-    binning by() { return binning(fNY,fMinY,fMaxY,fTitleY,fExpressionY); }
+    const char *expr()     const { return getExpression(); }
+    const char *namexy()   const { return Form("%s%s",fExpressionX,fExpressionY); }
+    const char *namexynn() const { return Form("%s%d%s%d",fExpressionX,fNX,fExpressionY,fNY); }
+
+    binning bx() const { return binning(fNX,fMinX,fMaxX,justTitle(fTitleX),fExpressionX); }
+    binning by() const { return binning(fNY,fMinY,fMaxY,justTitle(fTitleY),fExpressionY); }
 
     int icvs(int iX, int iY) { return (fNY-iY-1)*fNX+iX+1; }
 };
@@ -245,9 +287,14 @@ void ejungwoo::setCanvasPar(parContainer *par)
 
 void ejungwoo::setAttributePar(parContainer *par)
 {
-  fParAtt.colorArrayMain = par -> GetParVInt("color_main");
-  if (par -> CheckPar("color_faint")) fParAtt.colorArrayFaint = par -> GetParVInt("color_faint");
-  if (par -> CheckPar("color_dark"))  fParAtt.colorArrayDark  = par -> GetParVInt("color_dark");
+  fParAtt.lineStyle = par -> GetParVInt("line_style");
+  fParAtt.lineWidth = par -> GetParVInt("line_width");
+  fParAtt.lineColor = par -> GetParVInt("line_color");
+  fParAtt.markerSize = par -> GetParVDouble("marker_size");
+  fParAtt.markerStyle = par -> GetParVInt("marker_style");
+  fParAtt.markerColor = par -> GetParVInt("marker_color");
+  fParAtt.fillStyle = par -> GetParVInt("fill_style");
+  fParAtt.fillColor = par -> GetParVInt("fill_color");
 }
 
 /// Create canvas with nameCvs and division number nx and ny.
@@ -292,13 +339,13 @@ TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameC
   double padRatioInnEdge2[2] = {double(fParCvs.marginTop[0]+fParCvs.marginTop[1]+innSize[0])/topSize[0], double(fParCvs.marginTop[2]+fParCvs.marginTop[3]+innSize[1])/topSize[1]};
 
   const char *titleCvs = Form("%s.%d.%d.%d.   %s",nameConf,nx,ny,0,nameCvs);
-  auto cvs = new TCanvas(nameCvs, titleCvs, fullSize[0], fullSize[1]);
+  auto cvs = new TCanvas(nameCvs, titleCvs, fCanvasIndex*10, 25+fCanvasIndex*10, fullSize[0], fullSize[1]);
   cvs -> SetMargin(marginRatioTop[0],marginRatioTop[1],marginRatioTop[2],marginRatioTop[3]);
 
-  if (fCanvasArray==nullptr) fCanvasArray = new TObjArray();
+  if (fCanvasArray==nullptr) fCanvasArray = new TObjArray(50);
   fCanvasArray -> Add(cvs);
 
-  if (nx>1||ny>1)
+  if (nx>1||ny>1||TString(nameConf).Index("nn")>=0)
   {
     int countPad = 0;
 
@@ -313,21 +360,25 @@ TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameC
         if (iy==0&&iy==ny-1) y1 = y2 - padRatioInnEdge2[1];
         else if (iy==0)      y1 = y2 - padRatioInnEdge1[3];
         else if (iy==ny-1)   y1 = y2 - padRatioInnEdge1[2];
+        if (y1<0) y1 = 0;
 
         double x1 = (ix>0)*(padRatioInnEdge1[0] + (ix-1)*padRatioInn[0]) + ix*marginRatioDiv[0];
         double x2 = x1 + padRatioInn[0];
         if (ix==0&&ix==nx-1) x2 = x1 + padRatioInnEdge2[0];
         else if (ix==0)      x2 = x1 + padRatioInnEdge1[0];
         else if (ix==nx-1)   x2 = x1 + padRatioInnEdge1[1];
+        if (x1<0) x1 = 0;
 
         const char *namePad = Form("%s_%d",cvs->GetName(),countPad);
-        const char *titlePad = Form("%d",countPad);
-        if (ix==0) titlePad = Form("l%s",titlePad);
-        if (ix==nx-1) titlePad = Form("r%s",titlePad);
-        if (iy==ny-1) titlePad = Form("t%s",titlePad);
-        if (iy==0) titlePad = Form("b%s",titlePad);
-        titlePad = Form("%s.%d.%d.%d   %s",nameConf,nx,ny,countPad,titlePad);
+        const char *titlePad = Form("%s.%d.%d.%d",nameConf,nx,ny,countPad);
+        //const char *titlePad = Form("%d",countPad);
+        //if (ix==0) titlePad = Form("l%s",titlePad);
+        //if (ix==nx-1) titlePad = Form("r%s",titlePad);
+        //if (iy==ny-1) titlePad = Form("t%s",titlePad);
+        //if (iy==0) titlePad = Form("b%s",titlePad);
+        //titlePad = Form("%s.%d.%d.%d   %s",nameConf,nx,ny,countPad,titlePad);
 
+        //kb_debug << "x, y, name, title: " << ix << ", " << iy << ", " << nameConf << ", " << titlePad << endl;
         auto padi = new TPad(namePad,titlePad,x1,y1,x2,y2);
         padi -> SetNumber(countPad);
         padi -> SetMargin(marginRatioPad[0],marginRatioPad[1],marginRatioPad[2],marginRatioPad[3]);
@@ -357,13 +408,15 @@ TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameC
 void ejungwoo::saveAll(const char *nameVersion) {
   if (strcmp(nameVersion,"")!=0) {
     gSystem -> mkdir(nameVersion);
-    gSystem -> mkdir(Form("%s/figures",nameVersion));
-    gSystem -> mkdir(Form("%s/pdf",nameVersion));
+    TString pathToFigures = Form("%s/figures",nameVersion);
+    TString pathToPDF = Form("%s/figures",nameVersion);
+    gSystem -> mkdir(pathToFigures);
+    gSystem -> mkdir(pathToPDF);
     auto numCanvases = fCanvasArray -> GetEntriesFast();
     for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
       auto cvs = (TCanvas *) fCanvasArray -> At(iCanvas);
-      cvs -> SaveAs(Form("%s/figures/%s.png",nameVersion,cvs->GetName()));
-      cvs -> SaveAs(Form("%s/pdf/%s.pdf",nameVersion,cvs->GetName()));
+      cvs -> SaveAs(pathToFigures+cvs->GetName()+".png");
+      cvs -> SaveAs(pathToPDF+cvs->GetName()+".pdf");
     }
   }
   else {
@@ -506,6 +559,21 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
 
   return hist;
 }
+
+/*
+TH1* ejungwoo::differential(TH1* hist, int iaxis) {
+  auto bnx = binning(hist,iaxis);
+  auto hist_diff = bnx.newHist(Form("%s_differential_%s",hist->GetName(), ((iaxis==2)?"y":((iaxis==3)?"z":"x")) ));
+
+  bnx.reset();
+  while (bnx.next()) {
+    if (bnx.bi()==1||bnx.bi()==bnx.fN) continue;
+    hist -> 
+
+    hist_diff -> SetBinContent(bnx.bi(),diff_value);
+  }
+}
+*/
 
 /// Make z axis
 TGaxis *ejungwoo::drawz(TH1* hist, TVirtualPad *vpad, int idx, const char *titlez)
@@ -670,11 +738,64 @@ TLegend *ejungwoo::draw(TLegend* legend, TVirtualPad *vpad, int idx, double x1In
   return legend;
 }
 
-void ejungwoo::att(TObject *obj, const char *nameConf)
+/// Set attribute of (line, marker and filling) to [histogram, graph, function, marker and line] from given nameConf
+TObject *ejungwoo::att(TObject *obj, int idx, const char *nameConf)
 {
   if (TString(nameConf).IsNull()) nameConf = fNameAttributeConf;
   auto par = conf(nameConf);
   setAttributePar(par);
+
+  if (obj->InheritsFrom(TH1::Class())) {
+    auto hist = (TH1 *) obj;
+    hist -> SetLineStyle(fParAtt.lineStyle[idx]);
+    hist -> SetLineWidth(fParAtt.lineWidth[idx]);
+    hist -> SetLineColor(fParAtt.lineColor[idx]);
+    hist -> SetMarkerSize(fParAtt.markerSize[idx]);
+    hist -> SetMarkerStyle(fParAtt.markerStyle[idx]);
+    hist -> SetMarkerColor(fParAtt.markerColor[idx]);
+    hist -> SetFillStyle(fParAtt.fillStyle[idx]);
+    hist -> SetFillColor(fParAtt.fillColor[idx]);
+  }
+
+  else if (obj->InheritsFrom(TGraph::Class())) {
+    auto graph = (TGraph *) obj;
+    graph -> SetLineStyle(fParAtt.lineStyle[idx]);
+    graph -> SetLineWidth(fParAtt.lineWidth[idx]);
+    graph -> SetLineColor(fParAtt.lineColor[idx]);
+    graph -> SetMarkerSize(fParAtt.markerSize[idx]);
+    graph -> SetMarkerStyle(fParAtt.markerStyle[idx]);
+    graph -> SetMarkerColor(fParAtt.markerColor[idx]);
+    graph -> SetFillStyle(fParAtt.fillStyle[idx]);
+    graph -> SetFillColor(fParAtt.fillColor[idx]);
+  }
+
+  else if (obj->InheritsFrom(TF1::Class())) {
+    auto f1 = (TF1 *) obj;
+    f1 -> SetLineStyle(fParAtt.lineStyle[idx]);
+    f1 -> SetLineWidth(fParAtt.lineWidth[idx]);
+    f1 -> SetLineColor(fParAtt.lineColor[idx]);
+    f1 -> SetMarkerSize(fParAtt.markerSize[idx]);
+    f1 -> SetMarkerStyle(fParAtt.markerStyle[idx]);
+    f1 -> SetMarkerColor(fParAtt.markerColor[idx]);
+    f1 -> SetFillStyle(fParAtt.fillStyle[idx]);
+    f1 -> SetFillColor(fParAtt.fillColor[idx]);
+  }
+
+  else if (obj->InheritsFrom(TMarker::Class())) {
+    auto marker = (TMarker *) obj;
+    marker -> SetMarkerSize(fParAtt.markerSize[idx]);
+    marker -> SetMarkerStyle(fParAtt.markerStyle[idx]);
+    marker -> SetMarkerColor(fParAtt.markerColor[idx]);
+  }
+
+  else if (obj->InheritsFrom(TLine::Class())) {
+    auto line = (TLine *) obj;
+    line -> SetLineStyle(fParAtt.lineStyle[idx]);
+    line -> SetLineWidth(fParAtt.lineWidth[idx]);
+    line -> SetLineColor(fParAtt.lineColor[idx]);
+  }
+
+  return obj;
 }
 
 /// Remove trailing zeros and return as a string.
