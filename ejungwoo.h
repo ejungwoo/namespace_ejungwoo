@@ -1,6 +1,23 @@
 #ifndef ejungwoo_HH
 #define ejungwoo_HH
 
+#include "TClonesArray.h"
+#include "TObjArray.h"
+#include "TCanvas.h"
+#include "TH1D.h"
+#include "TH1.h"
+#include "TF1.h"
+#include "TGaxis.h"
+#include "TLegend.h"
+#include "TObject.h"
+#include "TString.h"
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+
+
 namespace ejungwoo
 {
   class binning; ///< 1-dimensional binning class
@@ -46,9 +63,6 @@ namespace ejungwoo
 
 
   TObject *att(TObject *obj, int idx=0, const char *nameConf="");
-
-
-  //TH1* differential(TH1* hist, int diff_axis_123=1);
 
 
   TString toString(double value);
@@ -245,7 +259,7 @@ KBParameterContainer *ejungwoo::conf(const char *nameConf)
   else par = (KBParameterContainer *) fParameterArray -> FindObject(nameConf);
   if (par==nullptr) {
     par = (KBParameterContainer *) fParameterArray -> ConstructedAt(fParameterArray -> GetEntriesFast());
-    const char *inputFull = Form("%s/%s.conf",gSystem -> Getenv("EJUNGWOOINPUTPATH"),nameConf);
+    const char *inputFull = Form("%s/%s.conf",gSystem -> Getenv("NSEJWINPUTPATH"),nameConf);
     cout << inputFull << endl;
     if (gSystem -> Which(".",inputFull)==nullptr)
       par -> AddFile(Form("%s.conf",nameConf));
@@ -409,6 +423,7 @@ TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameC
   return cvs;
 }
 
+
 /// save all canvases created so far in [nameVersion]/figures/[cvs-name].png and [nameVersion]/pdf/[cvs-name].pdf files
 void ejungwoo::saveAll(const char *nameVersion) {
   if (strcmp(nameVersion,"")!=0) {
@@ -564,21 +579,6 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
 
   return hist;
 }
-
-/*
-TH1* ejungwoo::differential(TH1* hist, int iaxis) {
-  auto bnx = binning(hist,iaxis);
-  auto hist_diff = bnx.newHist(Form("%s_differential_%s",hist->GetName(), ((iaxis==2)?"y":((iaxis==3)?"z":"x")) ));
-
-  bnx.reset();
-  while (bnx.next()) {
-    if (bnx.bi()==1||bnx.bi()==bnx.fN) continue;
-    hist -> 
-
-    hist_diff -> SetBinContent(bnx.bi(),diff_value);
-  }
-}
-*/
 
 /// Make z axis
 TGaxis *ejungwoo::drawz(TH1* hist, TVirtualPad *vpad, int idx, const char *titlez)
