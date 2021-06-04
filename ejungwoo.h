@@ -59,6 +59,9 @@ namespace ejungwoo
   TGaxis*  drawz  (TH1*     hist,   TVirtualPad *vpad, int idx=0, const char *titlez="");
   TLegend* make   (TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
   TLegend* draw   (TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
+  void savePDF(const char *nameVersion="");
+  void savePNG(const char *nameVersion="");
+  void saveRoot(const char *nameVersion="");
   void saveAll(const char *nameVersion="");
 
 
@@ -260,11 +263,13 @@ KBParameterContainer *ejungwoo::conf(const char *nameConf)
   if (par==nullptr) {
     par = (KBParameterContainer *) fParameterArray -> ConstructedAt(fParameterArray -> GetEntriesFast());
     const char *inputFull = Form("%s/%s.conf",gSystem -> Getenv("NSEJWINPUTPATH"),nameConf);
-    cout << inputFull << endl;
-    if (gSystem -> Which(".",inputFull)==nullptr)
-      par -> AddFile(Form("%s.conf",nameConf));
-    else
+    const char *localConf = Form("conf_ej/%s.conf",nameConf);
+    if (gSystem -> Which(".",inputFull)!=nullptr)
       par -> AddFile(inputFull);
+    else if (gSystem -> Which(".",localConf)!=nullptr)
+      par -> AddFile(localConf);
+    else
+      par -> AddFile(Form("%s.conf",nameConf));
     par -> SetName(nameConf);
   }
   return par;
@@ -423,32 +428,74 @@ TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameC
   return cvs;
 }
 
-
-/// save all canvases created so far in [nameVersion]/figures/[cvs-name].png and [nameVersion]/pdf/[cvs-name].pdf files
-void ejungwoo::saveAll(const char *nameVersion) {
+void ejungwoo::savePDF(const char *nameVersion) {
   if (strcmp(nameVersion,"")!=0) {
     gSystem -> mkdir(nameVersion);
-    TString pathToFigures = Form("%s/figures",nameVersion);
-    TString pathToPDF = Form("%s/figures",nameVersion);
-    gSystem -> mkdir(pathToFigures);
-    gSystem -> mkdir(pathToPDF);
+    TString pathToData = Form("%s/pdf",nameVersion);
+    gSystem -> mkdir(pathToData);
     auto numCanvases = fCanvasArray -> GetEntriesFast();
     for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
       auto cvs = (TCanvas *) fCanvasArray -> At(iCanvas);
-      cvs -> SaveAs(pathToFigures+cvs->GetName()+".png");
-      cvs -> SaveAs(pathToPDF+cvs->GetName()+".pdf");
+      cvs -> SaveAs(pathToData+cvs->GetName()+".pdf");
     }
   }
   else {
-    gSystem -> mkdir(Form("figures"));
     gSystem -> mkdir(Form("pdf"));
     auto numCanvases = fCanvasArray -> GetEntriesFast();
     for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
       auto cvs = (TCanvas *) fCanvasArray -> At(iCanvas);
-      cvs -> SaveAs(Form("figures/%s.png",cvs->GetName()));
       cvs -> SaveAs(Form("pdf/%s.pdf",cvs->GetName()));
     }
   }
+}
+
+void ejungwoo::savePNG(const char *nameVersion) {
+  if (strcmp(nameVersion,"")!=0) {
+    gSystem -> mkdir(nameVersion);
+    TString pathToData = Form("%s/figures",nameVersion);
+    gSystem -> mkdir(pathToData);
+    auto numCanvases = fCanvasArray -> GetEntriesFast();
+    for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
+      auto cvs = (TCanvas *) fCanvasArray -> At(iCanvas);
+      cvs -> SaveAs(pathToData+cvs->GetName()+".png");
+    }
+  }
+  else {
+    gSystem -> mkdir(Form("figures"));
+    auto numCanvases = fCanvasArray -> GetEntriesFast();
+    for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
+      auto cvs = (TCanvas *) fCanvasArray -> At(iCanvas);
+      cvs -> SaveAs(Form("figures/%s.png",cvs->GetName()));
+    }
+  }
+}
+
+void ejungwoo::saveRoot(const char *nameVersion) {
+  if (strcmp(nameVersion,"")!=0) {
+    gSystem -> mkdir(nameVersion);
+    TString pathToData = Form("%s/rooto",nameVersion);
+    gSystem -> mkdir(pathToData);
+    auto numCanvases = fCanvasArray -> GetEntriesFast();
+    for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
+      auto cvs = (TCanvas *) fCanvasArray -> At(iCanvas);
+      cvs -> SaveAs(pathToData+cvs->GetName()+".root");
+    }
+  }
+  else {
+    gSystem -> mkdir(Form("rooto"));
+    auto numCanvases = fCanvasArray -> GetEntriesFast();
+    for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
+      auto cvs = (TCanvas *) fCanvasArray -> At(iCanvas);
+      cvs -> SaveAs(Form("rooto/%s.root",cvs->GetName()));
+    }
+  }
+}
+
+/// save all canvases created so far in [nameVersion]/figures/[cvs-name].png and [nameVersion]/pdf/[cvs-name].pdf files
+void ejungwoo::saveAll(const char *nameVersion) {
+  savePNG(nameVersion);
+  savePDF(nameVersion);
+  saveRoot(nameVersion);
 }
 
 /// Make hist fit to the pad. If idx>0, pad where legend is drawn is selected by vpad->cd(idx). 
