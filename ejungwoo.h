@@ -27,13 +27,14 @@ namespace ejungwoo
   class parCanvas {
     public:
     int font, menuSize, padSize[2], marginInn[4], marginTop[4], marginDiv[2] ,axisNdivision[3], titleAlign[4], titleColor[4];
-    bool removeInnerPadAxis, removeInnerMainTitle, removeInnerZaxis, titleRotate[4];
+    bool removeInnerPadAxis[2], removeInnerMainTitle, removeInnerZaxis, titleRotate[4], setStats=false, setDivIndexYX=false;
     double tickSize[3], labelSize[3], labelOffset[3], titleSize[4], titleOffset[4];
   };
   class parAttribute {
     public:
     vector<int> lineStyle, lineWidth, lineColor, markerStyle, markerColor, fillColor, fillStyle;
     vector<double> markerSize;
+    int textFont=133, textSize=25, textAlign=22;
   };
 
 
@@ -41,34 +42,48 @@ namespace ejungwoo
   int fCanvasIndex = 0;
   TObjArray *fCanvasArray = nullptr;
 
-  parContainer *conf(const char *nameConf);
-
   parCanvas fParCvs;
   const char *fNameCanvasConf = "single";
-  void setCanvasPar(parContainer *par);
-
   parAttribute fParAtt;
   const char *fNameAttributeConf = "att1";
+
+
+
+  parContainer *conf(const char *nameConf);
+
+  void setCanvasPar(parContainer *par);
   void setAttributePar(parContainer *par);
 
+  void padxy(TVirtualPad *pad, double &x1, double &y1);
+  void padxy(TVirtualPad *pad, double &x1, double &y1, double &dx, double &dy, double &xUnit, double &yUnit);
 
-  TCanvas* canvas (const char *nameCvs, int nx, int ny, const char *nameConf="");
-  TCanvas* canvas (const char *nameCvs="", const char *nameConf="") { return canvas(nameCvs, 1, 1, nameConf); }
-  TH1*     make   (TH1*     hist,   TVirtualPad *vpad, int idx=0, const char *drawOption="");
-  TH1*     draw   (TH1*     hist,   TVirtualPad *vpad, int idx=0, const char *drawOption="");
-  TGaxis*  drawz  (TH1*     hist,   TVirtualPad *vpad, int idx=0, const char *titlez="");
-  TLegend* make   (TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
-  TLegend* draw   (TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
+  TPaveText*  newpt(TString content, TVirtualPad *vpad, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0);
+
+  TCanvas*    canvas(const char *nameCvs, int nx, int ny, const char *nameConf="");
+  TCanvas*    canvas(const char *nameCvs="", const char *nameConf="") { return canvas(nameCvs, 1, 1, nameConf); }
+  TH1*        make (TH1* hist, TVirtualPad *vpad, int idx=0, const char *drawOption="");
+  TH1*        draw (TH1* hist, TVirtualPad *vpad, int idx=0, const char *drawOption="");
+  TGaxis*     drawz(TH1* hist, TVirtualPad *vpad, int idx=0, const char *titlez="");
+  TLegend*    make(TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
+  TLegend*    draw(TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
+
   void savePDF(const char *nameVersion="");
   void savePNG(const char *nameVersion="");
   void saveRoot(const char *nameVersion="");
   void saveAll(const char *nameVersion="");
-
+  void write(TObject *obj);
 
   TObject *att(TObject *obj, int idx=0, const char *nameConf="");
 
-
+  void colorwheel();
+  void markers();
   TString toString(double value);
+
+  TF1 *fitg(TH1 *hist, double distSigma=2.5, Option_t *opt="RQ0");
+
+  /// The first two points of graph_hand_pointed should be the two opposite corner of histogram (x1,y1) and (x2,y2);
+  /// reconstructed  points will be written out if saveName is given
+  TGraph *recoPoints(TGraph *graph_hand_pointed, double x1, double x2, double y1, double y2, TString saveName="");
 };
 
 class ejungwoo::binning
@@ -150,15 +165,16 @@ class ejungwoo::binning
     bool prev()  { if (fIdx<2) return false; fValue = fMin + (fIdx--) * fW + .5 * fW; return true; }
 
     //iteration values
-    int    ii()    const { return fIdx-1; }
-    int    bi()    const { return fIdx; }
-    double val()   const { return fValue; }
-    double low()   const { return lowEdge(fIdx); }
-    double high()  const { return highEdge(fIdx); }
+    int    ii()     const { return fIdx-1; }
+    int    bi()     const { return fIdx; }
+    double val()    const { return fValue; }
+    double low()    const { return lowEdge(fIdx); }
+    double high()   const { return highEdge(fIdx); }
+    double center() const { return getCenter(fIdx); }
 
     double getFullWidth()         const { return (fMax - fMin); }
     double getFullCenter()        const { return (fMax + fMin)/2.; }
-    double lowEdge(int bin= 1)    const { return fMin+(bin-1)*(fMax-fMin)/fN; }
+    double lowEdge(int bin=1)     const { return fMin+(bin-1)*(fMax-fMin)/fN; }
     double highEdge(int bin=-1)   const { if (bin==-1) bin=fN; return fMin+(bin)*(fMax-fMin)/fN; }
     double getCenter(int bin)     const { return (fMin + (bin-.5)*fW); }
     bool   isInside(double value) const { if(value>fMin && value<fMax) return true; return false; }
@@ -227,6 +243,9 @@ class ejungwoo::binning2
     double fMinY = 0;
     double fMaxY = 0;
 
+    binning2() {}
+    binning2(int nX, double minX, double maxX, int nY, double minY, double maxY)
+      : fNX(nX), fMinX(minX), fMaxX(maxX), fNY(nY), fMinY(minY), fMaxY(maxY) {}
     binning2(const char *titleX, const char *expX, int nX, double minX, double maxX, const char *titleY,  const char *expY, int nY, double minY, double maxY)
       : fTitleX(titleX), fExpressionX(expX), fNX(nX), fMinX(minX), fMaxX(maxX), fTitleY(titleY) ,fExpressionY(expY), fNY(nY), fMinY(minY), fMaxY(maxY) {}
 
@@ -247,12 +266,53 @@ class ejungwoo::binning2
     binning by() const { return binning(fNY,fMinY,fMaxY,justTitle(fTitleY),fExpressionY); }
 
     int icvs(int iX, int iY) { return (fNY-iY-1)*fNX+iX+1; }
+
+    TObjArray *rangeBoxGrid();
+    TGraph *rangeBox(int binX=-1, int binY=-1);
 };
 
 ejungwoo::binning2 ejungwoo::binning::operator*(const binning binn) {
   return binning2(fTitle,fExpression,fN,fMin,fMax, binn.getTitle(),binn.getExpression(),binn.getN(),binn.getMin(),binn.getMax());
 }
 
+TObjArray *ejungwoo::binning2::rangeBoxGrid() {
+  auto lineArray = new TObjArray(100);
+  auto bnx = bx();
+  auto bny = by();
+  bnx.reset();
+  while (bnx.next())
+    lineArray -> Add(new TLine(bnx.low(),bny.lowEdge(),bnx.low(),bny.highEdge()));
+  lineArray -> Add(new TLine(bnx.high(),bny.lowEdge(),bnx.high(),bny.highEdge()));
+  bny.reset();
+  while (bny.next())
+    lineArray -> Add(new TLine(bnx.lowEdge(),bny.low(),bnx.highEdge(),bny.low()));
+  lineArray -> Add(new TLine(bnx.lowEdge(),bny.high(),bnx.highEdge(),bny.high()));
+  return lineArray;
+}
+
+TGraph *ejungwoo::binning2::rangeBox(int binX, int binY) {
+  auto graph = new TGraph();
+  auto bnx = bx();
+  auto bny = by();
+  auto x1 = bnx.lowEdge(binX);
+  auto x2 = bnx.highEdge(binX);
+  auto y1 = bny.lowEdge(binY);
+  auto y2 = bny.highEdge(binY);
+  if (binX < 0) {
+    x1 = bnx.lowEdge();
+    x2 = bnx.highEdge();
+  }
+  if (binY < 0)  {
+    y1 = bny.lowEdge();
+    y2 = bny.highEdge();
+  }
+  graph -> SetPoint(graph->GetN(),x1,y1);
+  graph -> SetPoint(graph->GetN(),x1,y2);
+  graph -> SetPoint(graph->GetN(),x2,y2);
+  graph -> SetPoint(graph->GetN(),x2,y1);
+  graph -> SetPoint(graph->GetN(),x1,y1);
+  return graph;
+}
 
 /// Get configuration parameter container from [nameConf].conf file.
 KBParameterContainer *ejungwoo::conf(const char *nameConf)
@@ -277,11 +337,26 @@ KBParameterContainer *ejungwoo::conf(const char *nameConf)
 
 void ejungwoo::setCanvasPar(parContainer *par)
 {
+  if (par -> CheckPar("set_stats"))
+    fParCvs.setStats = par -> GetParBool("set_stats");
+
+  if (par -> CheckPar("set_div_idx_yx"))
+    fParCvs.setDivIndexYX = par -> GetParBool("set_div_idx_yx");
+
   fParCvs.font = par -> GetParInt("font");
   fParCvs.menuSize = par -> GetParInt("menu_size");
   fParCvs.removeInnerZaxis = par -> GetParBool("remove_inn_zaxis");
-  fParCvs.removeInnerPadAxis = par -> GetParBool("remove_inn_pad_axis");
   fParCvs.removeInnerMainTitle = par -> GetParBool("remove_inn_main_title");
+
+  if (par -> GetParN("remove_inn_pad_axis")>0) {
+    fParCvs.removeInnerPadAxis[0] = par -> GetParBool("remove_inn_pad_axis",0);
+    fParCvs.removeInnerPadAxis[1] = par -> GetParBool("remove_inn_pad_axis",1);
+  }
+  else {
+    fParCvs.removeInnerPadAxis[0] = par -> GetParBool("remove_inn_pad_axis");
+    fParCvs.removeInnerPadAxis[1] = par -> GetParBool("remove_inn_pad_axis");
+  }
+
   for (int ixy : {0,1}) {
     fParCvs.padSize[ixy] = par -> GetParInt("pad_size",ixy);
     fParCvs.marginDiv[ixy] = par -> GetParInt("margin_div",ixy);
@@ -319,7 +394,26 @@ void ejungwoo::setAttributePar(parContainer *par)
   fParAtt.markerColor = par -> GetParVInt("marker_color");
   fParAtt.fillStyle = par -> GetParVInt("fill_style");
   fParAtt.fillColor = par -> GetParVInt("fill_color");
+  if (par -> CheckPar("text_font")) fParAtt.textFont = par -> GetParInt("text_font");
+  if (par -> CheckPar("text_size")) fParAtt.textSize = par -> GetParInt("text_size");
+  if (par -> CheckPar("text_align")) fParAtt.textAlign = par -> GetParInt("text_align");
 }
+
+TPaveText* ejungwoo::newpt(TString content, TVirtualPad *vpad, double x1, double y1, double dx, double dy)
+{
+  double xu, yu;
+  padxy(vpad, x1, y1, dx, dy, xu, yu);
+  auto paveText = new TPaveText(x1,y1,x1+dx,y1+dy,"NDCNB");
+  paveText -> AddText(content);
+  paveText -> SetTextAlign(12);
+  paveText -> SetTextFont(133);
+  paveText -> SetTextSize(25);
+  paveText -> SetFillColor(0);
+  paveText -> SetFillStyle(0);
+  paveText -> SetBorderSize(0);
+  return paveText;
+}
+
 
 /// Create canvas with nameCvs and division number nx and ny.
 /// Set nx and ny is 1 for single pad canvas.
@@ -373,55 +467,77 @@ TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameC
   {
     int countPad = 0;
 
-    for (auto iy=0; iy<ny; ++iy) {
-      for (auto ix=0; ix<nx; ++ix)
-      {
-        cvs -> cd();
-        countPad++;
-
-        double y2 = 1 - (iy>0)*(padRatioInnEdge1[3] + (iy-1)*padRatioInn[1]) - iy*marginRatioDiv[1];
-        double y1 = y2 - padRatioInn[1];
-        if (iy==0&&iy==ny-1) y1 = y2 - padRatioInnEdge2[1];
-        else if (iy==0)      y1 = y2 - padRatioInnEdge1[3];
-        else if (iy==ny-1)   y1 = y2 - padRatioInnEdge1[2];
-        if (y1<0) y1 = 0;
-
-        double x1 = (ix>0)*(padRatioInnEdge1[0] + (ix-1)*padRatioInn[0]) + ix*marginRatioDiv[0];
-        double x2 = x1 + padRatioInn[0];
-        if (ix==0&&ix==nx-1) x2 = x1 + padRatioInnEdge2[0];
-        else if (ix==0)      x2 = x1 + padRatioInnEdge1[0];
-        else if (ix==nx-1)   x2 = x1 + padRatioInnEdge1[1];
-        if (x1<0) x1 = 0;
-
-        const char *namePad = Form("%s_%d",cvs->GetName(),countPad);
-        const char *titlePad = Form("%s.%d.%d.%d",nameConf,nx,ny,countPad);
-        //const char *titlePad = Form("%d",countPad);
-        //if (ix==0) titlePad = Form("l%s",titlePad);
-        //if (ix==nx-1) titlePad = Form("r%s",titlePad);
-        //if (iy==ny-1) titlePad = Form("t%s",titlePad);
-        //if (iy==0) titlePad = Form("b%s",titlePad);
-        //titlePad = Form("%s.%d.%d.%d   %s",nameConf,nx,ny,countPad,titlePad);
-
-        //kb_debug << "x, y, name, title: " << ix << ", " << iy << ", " << nameConf << ", " << titlePad << endl;
-        auto padi = new TPad(namePad,titlePad,x1,y1,x2,y2);
-        padi -> SetNumber(countPad);
-        padi -> SetMargin(marginRatioPad[0],marginRatioPad[1],marginRatioPad[2],marginRatioPad[3]);
-        padi -> Draw();
-
-        if (ix==0&&ix==nx-1) {
-          padi -> SetLeftMargin (marginRatioEd2[0]);
-          padi -> SetRightMargin(marginRatioEd2[1]);
+    vector<int> idxX;
+    vector<int> idxY;
+    if (fParCvs.setDivIndexYX) {
+      for (auto ix=0; ix<nx; ++ix) {
+        for (auto iy=0; iy<ny; ++iy) {
+          idxX.push_back(ix);
+          idxY.push_back(iy);
         }
-        else if (ix==0)    padi -> SetLeftMargin (marginRatioEdg[0]);
-        else if (ix==nx-1) padi -> SetRightMargin(marginRatioEdg[1]);
-
-        if (iy==0&&iy==ny-1) {
-          padi -> SetBottomMargin(marginRatioEd2[2]);
-          padi -> SetTopMargin   (marginRatioEd2[3]);
-        }
-        else if (iy==ny-1) padi -> SetBottomMargin(marginRatioEdg[2]);
-        else if (iy==0)    padi -> SetTopMargin   (marginRatioEdg[3]);
       }
+    } else {
+      for (auto iy=0; iy<ny; ++iy) {
+        for (auto ix=0; ix<nx; ++ix) {
+          idxX.push_back(ix);
+          idxY.push_back(iy);
+        }
+      }
+    }
+
+    //for (auto iy=0; iy<ny; ++iy) {
+      //for (auto ix=0; ix<nx; ++ix)
+    int numIdexes = idxX.size();
+    for (int idx=0; idx<numIdexes; ++idx)
+    {
+      auto ix = idxX[idx];
+      auto iy = idxY[idx];
+
+      cvs -> cd();
+      countPad++;
+
+      double y2 = 1 - (iy>0)*(padRatioInnEdge1[3] + (iy-1)*padRatioInn[1]) - iy*marginRatioDiv[1];
+      double y1 = y2 - padRatioInn[1];
+      if (iy==0&&iy==ny-1) y1 = y2 - padRatioInnEdge2[1];
+      else if (iy==0)      y1 = y2 - padRatioInnEdge1[3];
+      else if (iy==ny-1)   y1 = y2 - padRatioInnEdge1[2];
+      if (y1<0) y1 = 0;
+
+      double x1 = (ix>0)*(padRatioInnEdge1[0] + (ix-1)*padRatioInn[0]) + ix*marginRatioDiv[0];
+      double x2 = x1 + padRatioInn[0];
+      if (ix==0&&ix==nx-1) x2 = x1 + padRatioInnEdge2[0];
+      else if (ix==0)      x2 = x1 + padRatioInnEdge1[0];
+      else if (ix==nx-1)   x2 = x1 + padRatioInnEdge1[1];
+      if (x1<0) x1 = 0;
+
+      const char *namePad = Form("%s_%d",cvs->GetName(),countPad);
+      const char *titlePad = Form("%s.%d.%d.%d",nameConf,nx,ny,countPad);
+      //const char *titlePad = Form("%d",countPad);
+      //if (ix==0) titlePad = Form("l%s",titlePad);
+      //if (ix==nx-1) titlePad = Form("r%s",titlePad);
+      //if (iy==ny-1) titlePad = Form("t%s",titlePad);
+      //if (iy==0) titlePad = Form("b%s",titlePad);
+      //titlePad = Form("%s.%d.%d.%d   %s",nameConf,nx,ny,countPad,titlePad);
+
+      //kb_debug << "x, y, name, title: " << ix << ", " << iy << ", " << nameConf << ", " << titlePad << endl;
+      auto padi = new TPad(namePad,titlePad,x1,y1,x2,y2);
+      padi -> SetNumber(countPad);
+      padi -> SetMargin(marginRatioPad[0],marginRatioPad[1],marginRatioPad[2],marginRatioPad[3]);
+      padi -> Draw();
+
+      if (ix==0&&ix==nx-1) {
+        padi -> SetLeftMargin (marginRatioEd2[0]);
+        padi -> SetRightMargin(marginRatioEd2[1]);
+      }
+      else if (ix==0)    padi -> SetLeftMargin (marginRatioEdg[0]);
+      else if (ix==nx-1) padi -> SetRightMargin(marginRatioEdg[1]);
+
+      if (iy==0&&iy==ny-1) {
+        padi -> SetBottomMargin(marginRatioEd2[2]);
+        padi -> SetTopMargin   (marginRatioEd2[3]);
+      }
+      else if (iy==ny-1) padi -> SetBottomMargin(marginRatioEdg[2]);
+      else if (iy==0)    padi -> SetTopMargin   (marginRatioEdg[3]);
     }
   }
 
@@ -431,7 +547,7 @@ TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameC
 void ejungwoo::savePDF(const char *nameVersion) {
   if (strcmp(nameVersion,"")!=0) {
     gSystem -> mkdir(nameVersion);
-    TString pathToData = Form("%s/pdf",nameVersion);
+    TString pathToData = Form("%s/pdf/",nameVersion);
     gSystem -> mkdir(pathToData);
     auto numCanvases = fCanvasArray -> GetEntriesFast();
     for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
@@ -452,7 +568,7 @@ void ejungwoo::savePDF(const char *nameVersion) {
 void ejungwoo::savePNG(const char *nameVersion) {
   if (strcmp(nameVersion,"")!=0) {
     gSystem -> mkdir(nameVersion);
-    TString pathToData = Form("%s/figures",nameVersion);
+    TString pathToData = Form("%s/figures/",nameVersion);
     gSystem -> mkdir(pathToData);
     auto numCanvases = fCanvasArray -> GetEntriesFast();
     for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
@@ -473,7 +589,7 @@ void ejungwoo::savePNG(const char *nameVersion) {
 void ejungwoo::saveRoot(const char *nameVersion) {
   if (strcmp(nameVersion,"")!=0) {
     gSystem -> mkdir(nameVersion);
-    TString pathToData = Form("%s/rooto",nameVersion);
+    TString pathToData = Form("%s/rooto/",nameVersion);
     gSystem -> mkdir(pathToData);
     auto numCanvases = fCanvasArray -> GetEntriesFast();
     for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
@@ -498,6 +614,15 @@ void ejungwoo::saveAll(const char *nameVersion) {
   saveRoot(nameVersion);
 }
 
+void ejungwoo::write(TObject *obj)
+{
+  gSystem -> mkdir(Form("rooto"));
+  TString fileName = Form("rooto/%s.root",obj -> GetName());
+  auto ofile = new TFile(fileName,"recreate");
+  cout_info << "Writting file " << fileName << "!" << endl;
+  obj -> Write();
+}
+
 /// Make hist fit to the pad. If idx>0, pad where legend is drawn is selected by vpad->cd(idx). 
 /// Draw histogram before make(TH1* hist, TVirtualPad *vpad) to apply main title attribute.
 TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOption)
@@ -512,10 +637,14 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
   if (padi!=nullptr) {
     TString titleCvs = padi -> GetTitle();
     auto tokens = titleCvs.Tokenize(".");
-    nameConfCvs = ((TObjString *) tokens->At(0))->GetString();
-    nx = ((TObjString *) tokens->At(1))->GetString().Atoi();
-    ny = ((TObjString *) tokens->At(2))->GetString().Atoi();
-    if (idx==0) idx0 = ((TObjString *) tokens->At(3))->GetString().Atoi();
+    if (tokens->GetEntries()>3) {
+      nameConfCvs = ((TObjString *) tokens->At(0))->GetString();
+      nx = ((TObjString *) tokens->At(1))->GetString().Atoi();
+      ny = ((TObjString *) tokens->At(2))->GetString().Atoi();
+      if (idx==0) idx0 = ((TObjString *) tokens->At(3))->GetString().Atoi();
+    }
+    else
+      nameConfCvs = fNameCanvasConf;
   }
 
   const char *nameConf = ((padi!=nullptr)?nameConfCvs:fNameCanvasConf);
@@ -559,6 +688,8 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
 
   double scaleOffset = double(fullSize[1])/(topSize0[1]+fParCvs.menuSize);
   double titleOffset[4]; for (auto ixyzm : {0,1,2,3}) titleOffset[ixyzm] = fParCvs.titleOffset[ixyzm]*scaleOffset;
+  
+  hist -> SetStats(fParCvs.setStats);
 
   for (auto ixyz : {0,1,2}) {
     TAxis *axis;
@@ -566,6 +697,7 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
     else if (ixyz==1) axis = (TAxis *) hist -> GetYaxis();
     else if (ixyz==2) axis = (TAxis *) hist -> GetZaxis();
     if (fParCvs.titleAlign[ixyz]==2) axis -> CenterTitle();
+    else axis -> CenterTitle(false);
     axis -> RotateTitle(fParCvs.titleRotate[ixyz]);
     axis -> SetTitleOffset(titleOffset[ixyz]);
     axis -> SetTitleSize(fParCvs.titleSize[ixyz]);
@@ -582,7 +714,7 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
   {
     if (ix==0&&ix==nx-1) {}
     else  {
-      if (ix!=0 && fParCvs.removeInnerPadAxis) {
+      if (ix!=0 && fParCvs.removeInnerPadAxis[1]) {
         hist -> GetYaxis() -> SetLabelOffset(100);
         hist -> GetYaxis() -> SetTitleOffset(100);
       }
@@ -595,7 +727,7 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
     }
     if (iy==0&&iy==ny-1) {}
     else {
-      if (iy!=ny-1&&fParCvs.removeInnerPadAxis) {
+      if (iy!=ny-1&&fParCvs.removeInnerPadAxis[0]) {
         hist -> GetXaxis() -> SetLabelOffset(100);
         hist -> GetXaxis() -> SetTitleOffset(100);
       }
@@ -613,6 +745,7 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
     auto mainTitle = (TPaveText*) list_primitive -> FindObject("title");
     if (mainTitle!=nullptr)
     {
+      //kb_debug << mainTitle -> GetListOfLines() -> At(0) -> GetTitle() << endl;
       mainTitle -> SetTextFont(fParCvs.font);
       mainTitle -> SetTextAlign(fParCvs.titleAlign[3]);
       mainTitle -> SetTextSizePixels(fParCvs.titleSize[3]);
@@ -623,6 +756,8 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
       mainTitle -> SetY2NDC(1.);
     }
   }
+  padi -> Modified();
+  padi -> Update();
 
   return hist;
 }
@@ -670,6 +805,7 @@ TGaxis *ejungwoo::drawz(TH1* hist, TVirtualPad *vpad, int idx, const char *title
   auto zaxis = new TGaxis(padi->GetUxmax(),hist->GetYaxis()->GetXmin(),padi->GetUxmax(), hist->GetYaxis()->GetXmax(), 0, hist->GetYaxis()->GetXmax(), fParCvs.axisNdivision[2] ,"+L");
   zaxis -> SetTitle(titlez);
   if (fParCvs.titleAlign[2]==2) zaxis -> CenterTitle();
+  else zaxis -> CenterTitle(false);
   zaxis -> SetBit(TAxis::kRotateTitle);
   zaxis -> SetTitleOffset(hist->GetZaxis()->GetTitleOffset());
   zaxis -> SetTitleSize(fParCvs.titleSize[2]);
@@ -701,6 +837,41 @@ TH1 *ejungwoo::draw(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
   hist -> Draw(drawOption);
   make(hist,vpad,idx,drawOption);
   return hist;
+}
+
+void ejungwoo::padxy(TVirtualPad *pad, double &x1, double &y1)
+{
+  auto x1Frame = 0. + pad -> GetLeftMargin();
+  auto x2Frame = 1. - pad -> GetRightMargin();
+  auto y1Frame = 0. + pad -> GetBottomMargin();
+  auto y2Frame = 1. - pad -> GetTopMargin();
+  double x1New = (1.-x1)*x1Frame + x1*(x2Frame);
+  double y1New = (1.-y1)*y1Frame + y1*(y2Frame);
+  x1 = x1New;
+  y1 = y1New;
+}
+
+void ejungwoo::padxy(TVirtualPad *pad, double &x1, double &y1, double &dx, double &dy, double &xUnit, double &yUnit)
+{
+  auto x1Frame = 0. + pad -> GetLeftMargin();
+  auto x2Frame = 1. - pad -> GetRightMargin();
+  auto y1Frame = 0. + pad -> GetBottomMargin();
+  auto y2Frame = 1. - pad -> GetTopMargin();
+  xUnit = x2Frame - x1Frame;
+  yUnit = y2Frame - y1Frame;
+  auto dxNew = dx * xUnit;
+  auto dyNew = dy * yUnit;
+  double x1New = (1.-x1)*x1Frame + x1*(x2Frame);
+  double y1New = (1.-y1)*y1Frame + y1*(y2Frame);
+  if (x1<0) x1New = x2Frame-dxNew;
+  if (y1<0) y1New = y2Frame-dyNew;
+  double x2New = x1New + dxNew;
+  double y2New = y1New + dyNew;
+
+  x1 = x1New;
+  y1 = y1New;
+  dx = dxNew;
+  dy = dyNew;
 }
 
 /// Make legend fit to the pad. If idx>0, pad where legend is drawn is selected by vpad->cd(idx). 
@@ -736,13 +907,6 @@ TLegend *ejungwoo::make(TLegend *legend, TVirtualPad *vpad, int idx, double x1In
 
   auto padi = pad -> cd(idx);
 
-  auto x1Frame = 0. + padi -> GetLeftMargin();
-  auto x2Frame = 1. - padi -> GetRightMargin();
-  auto y1Frame = 0. + padi -> GetBottomMargin();
-  auto y2Frame = 1. - padi -> GetTopMargin();
-  auto xUnit = x2Frame - x1Frame;
-  auto yUnit = y2Frame - y1Frame;
-
   double dxTextMax = 0.;
   auto dxNorm = TLatex(0,0,"0").GetXsize();
   TIter next_entry(legend->GetListOfPrimitives());
@@ -752,22 +916,39 @@ TLegend *ejungwoo::make(TLegend *legend, TVirtualPad *vpad, int idx, double x1In
     auto dxText = TLatex(0,0,legendString).GetXsize()/dxNorm;
     if (dxTextMax<dxText) dxTextMax = dxText;
   }
+
+  if (dxInRatio<=0) dxInRatio = (fWidthDefaultLegend + dxTextMax * fWidthPerLengthLegend) * fLegendTextScale;
+  if (dyInRatio<=0) dyInRatio = (legend -> GetNRows() * fLegendHeightPerEntry) * fLegendTextScale;
+
+  double x1Legend = x1InRatio;
+  double y1Legend = y1InRatio;
+  double dxLegend = dxInRatio;
+  double dyLegend = dyInRatio;
+  double xUnit, yUnit;
+  padxy(padi, x1Legend, y1Legend, dxLegend, dyLegend, xUnit, yUnit);
+
+  /*
+  auto x1Frame = 0. + padi -> GetLeftMargin();
+  auto x2Frame = 1. - padi -> GetRightMargin();
+  auto y1Frame = 0. + padi -> GetBottomMargin();
+  auto y2Frame = 1. - padi -> GetTopMargin();
+  auto xUnit = x2Frame - x1Frame;
+  auto yUnit = y2Frame - y1Frame;
   auto dxLegend = dxInRatio * xUnit;
   auto dyLegend = dyInRatio * yUnit;
-  if (dxInRatio<=0) dxLegend = (fWidthDefaultLegend + dxTextMax * fWidthPerLengthLegend) * fLegendTextScale * xUnit;
-  if (dxInRatio<=0) dyLegend = (legend -> GetNRows() * fLegendHeightPerEntry) * fLegendTextScale * yUnit;
+  double x1Legend = (1.-x1InRatio)*x1Frame + x1InRatio*(x2Frame);
+  double y1Legend = (1.-y1InRatio)*y1Frame + y1InRatio*(y2Frame);
+  if (x1InRatio<0) x1Legend = x2Frame-dxLegend;
+  if (y1InRatio<0) y1Legend = y2Frame-dyLegend;
+  */
+  double x2Legend = x1Legend + dxLegend;
+  double y2Legend = y1Legend + dyLegend;
+
   double marginLegend = marginObj;
   if (marginLegend<0) {
     marginLegend = 1.-((dxTextMax*fWidthPerLengthLegend*fLegendTextScale)/(dxLegend/xUnit));
     if (marginLegend<0.25) marginLegend = 0.25;
   }
-
-  double x1Legend = (1.-x1InRatio)*x1Frame + x1InRatio*(x2Frame);
-  double y1Legend = (1.-y1InRatio)*y1Frame + y1InRatio*(y2Frame);
-  if (x1InRatio<0) x1Legend = x2Frame-dxLegend;
-  if (y1InRatio<0) y1Legend = y2Frame-dyLegend;
-  double x2Legend = x1Legend + dxLegend;
-  double y2Legend = y1Legend + dyLegend;
 
   legend -> SetX1(x1Legend + xOffset*xUnit);
   legend -> SetX2(x2Legend + xOffset*xUnit);
@@ -776,6 +957,7 @@ TLegend *ejungwoo::make(TLegend *legend, TVirtualPad *vpad, int idx, double x1In
   legend -> SetFillStyle(0);
   legend -> SetBorderSize(0);
   legend -> SetTextFont(fParCvs.font);
+  //kb_debug << marginLegend << endl;
   legend -> SetMargin(marginLegend);
 
   return legend;
@@ -847,6 +1029,13 @@ TObject *ejungwoo::att(TObject *obj, int idx, const char *nameConf)
     line -> SetLineColor(fParAtt.lineColor[idx]);
   }
 
+  else if (obj->InheritsFrom(TText::Class())) {
+    auto text = (TText *) obj;
+    text -> SetTextFont(fParAtt.textFont);
+    text -> SetTextSize(fParAtt.textSize);
+    text -> SetTextAlign(fParAtt.textAlign);
+  }
+
   return obj;
 }
 
@@ -868,6 +1057,177 @@ TString ejungwoo::toString(double value)
   }
 
   return vstring;
+}
+
+void ejungwoo::colorwheel() {
+  TColorWheel *w = new TColorWheel();
+  //w -> SetCanvas(new TCanvas("cw","",590,610));
+  w -> SetCanvas(new TCanvas("cw","",800,820));
+  w -> Draw();
+}
+
+void ejungwoo::markers() {
+  gStyle->SetOptStat(0);
+  auto cvs = new TCanvas("markers","",600,400);
+  cvs->SetMargin(0.02,0.02,0.02,0.02);
+  auto hist = new TH2D("hist","",100,0.2,10.8,100,0.1,5.6);
+  hist -> SetStats(0);
+  hist -> GetXaxis() -> SetLabelOffset(100);
+  hist -> GetYaxis() -> SetLabelOffset(100);
+  hist -> GetXaxis() -> SetNdivisions(0);
+  hist -> GetYaxis() -> SetNdivisions(0);
+  hist -> Draw();
+  int i = 0;
+  for (auto y=5; y>=1; --y) {
+    for (auto x=1; x<=10; ++x) {
+      if (i==0) { i++; continue; }
+      auto m = new TMarker(x,y,i);
+      m -> SetMarkerSize(3.5);
+      auto t = new TText(x,y-0.42,Form("%d",i));
+      t -> SetTextSize(0.035);
+      t -> SetTextAlign(22);
+      if ((i>=20&&i<=29)||i==33||i==34) t -> SetTextColor(kBlue);
+      if ((i>=24&&i<=28)||i==30||i==32) t->SetTextColor(kRed);
+      if (i>=9&&i<=19) {
+        t -> SetTextColor(kGray);
+        m -> SetMarkerColor(kGray);
+      }
+      m -> Draw();
+      t -> Draw();
+      i++;
+    }
+  }
+}
+
+TF1 *ejungwoo::fitg(TH1 *hist, double distSigma, Option_t *opt)
+{
+  if (distSigma==0)
+    distSigma = 2.5;
+
+  auto binmax = hist -> GetMaximumBin();
+  auto max = hist -> GetBinContent(binmax);
+  auto xmax = hist -> GetXaxis() -> GetBinCenter(binmax);
+  auto xerr = hist -> GetStdDev();
+
+  auto fit = new TF1(Form("%s_fitg",hist -> GetName()),"gaus(0)",xmax-xerr*distSigma,xmax+xerr*distSigma);
+  fit -> SetParameters(max,xmax,xerr);
+
+  max = fit -> GetParameter(0);
+  xmax = fit -> GetParameter(1);
+  xerr = fit -> GetParameter(2);
+
+  double frange1, frange2;
+  double dfrangeCut = (frange2 - frange1)/3.;
+
+  auto nbins = hist -> GetXaxis() -> GetNbins();
+  auto hrange1 = hist -> GetXaxis() -> GetBinLowEdge(1);
+  auto hrange2 = hist -> GetXaxis() -> GetBinUpEdge(nbins);
+  bool outofrange;
+
+  outofrange = false;
+  fit -> GetRange(frange1, frange2);
+  if (frange1 < hrange1) {
+    if (frange2 < hrange1) outofrange = true;
+    else if (frange2 - hrange1 < dfrangeCut) outofrange = true;
+    else frange1 = hrange1;
+  } else if (frange2 > hrange2) {
+    if (frange1 > hrange2) outofrange = true;
+    else if (hrange2 - frange1 < dfrangeCut) outofrange = true;
+    else frange2 = hrange2;
+  } fit -> SetRange(frange1, frange2);
+
+  if (outofrange) {
+    //std::cout<<" fit-range:("<<frange1<<","<<frange2<<") out of hist-range:("<<hrange1<<","<<hrange2<<")"<<endl;
+    fit -> SetParameters(0,0,0);
+    return fit;
+  }
+
+  hist -> Fit(fit,opt);
+  xmax=fit -> GetParameter(1);
+  xerr=fit -> GetParameter(2);
+  fit -> SetRange(xmax-distSigma*xerr,xmax+distSigma*xerr);
+
+  outofrange = false;
+  fit -> GetRange(frange1, frange2);
+  if (frange1 < hrange1) {
+    if (frange2 < hrange1) outofrange = true;
+    else if (frange2 - hrange1 < dfrangeCut) outofrange = true;
+    else frange1 = hrange1;
+  } else if (frange2 > hrange2) {
+    if (frange1 > hrange2) outofrange = true;
+    else if (hrange2 - frange1 < dfrangeCut) outofrange = true;
+    else frange2 = hrange2;
+  } fit -> SetRange(frange1, frange2);
+
+  if (outofrange) {
+    //std::cout<<" fit-range:("<<frange1<<","<<frange2<<") out of hist-range:("<<hrange1<<","<<hrange2<<")"<<endl;
+    fit  ->  SetParameters(0,0,0);
+    return fit;
+  }
+
+  int fitcount = 1;
+  double xerr2 = 0.;
+  while (fitcount<20&&TMath::Abs(xerr-xerr2)/xerr>0.2) {
+    xerr2=xerr;
+    fit -> SetRange(xmax-distSigma*xerr2,xmax+distSigma*xerr2);
+    {
+      fit -> GetRange(frange1, frange2);
+
+      nbins = hist -> GetXaxis()->GetNbins();
+      hrange1 = hist -> GetXaxis()->GetBinLowEdge(1);
+      hrange2 = hist -> GetXaxis()->GetBinUpEdge(nbins);
+
+      outofrange = false;
+      fit -> GetRange(frange1, frange2);
+      if (frange1 < hrange1) {
+        if (frange2 < hrange1) outofrange = true;
+        else if (frange2 - hrange1 < dfrangeCut) outofrange = true;
+        else frange1 = hrange1;
+      } else if (frange2 > hrange2) {
+        if (frange1 > hrange2) outofrange = true;
+        else if (hrange2 - frange1 < dfrangeCut) outofrange = true;
+        else frange2 = hrange2;
+      } fit -> SetRange(frange1, frange2);
+      if (outofrange)
+        break;
+    }
+    hist -> Fit(fit,opt);
+    xmax=fit -> GetParameter(1);
+    xerr=fit -> GetParameter(2);
+    ++fitcount;
+  }
+
+  //std::cout<<"->[a:"<<fit -> GetParameter(0)<<", m:"<<fit -> GetParameter(1)<<", s:"<<fit -> GetParameter(2)<<"] ("<<fitcount<<")"<<std::endl;
+  return fit;
+}
+
+TGraph *ejungwoo::recoPoints(TGraph *graph_hand_pointed, double x1, double x2, double y1, double y2, TString saveName)
+{
+  ofstream outFile;
+  if (!saveName.IsNull()) {
+    if (saveName==".")
+      saveName = Form("%s.dat",graph_hand_pointed -> GetName());
+    cout_info << "writting reconstructed points to " << saveName << endl;
+    outFile.open(saveName);
+  }
+  auto graphReco = new TGraph();
+  int numPoints = graph_hand_pointed -> GetN();
+  double x0, y0, x1LC, x2LC, y1LC, y2LC;
+  graph_hand_pointed -> GetPoint(0,x1LC,y1LC);
+  graph_hand_pointed -> GetPoint(1,x2LC,y2LC);
+  for (auto iPoint=2; iPoint<numPoints; ++iPoint) {
+    graph_hand_pointed -> GetPoint(iPoint,x0,y0);
+    double dx1 = x0 - x1LC;
+    double dx2 = x2LC - x0;
+    double xReco = (dx1*x2+dx2*x1) / (dx1+dx2);
+    double dy1 = y0 - y1LC;
+    double dy2 = y2LC - y0;
+    double yReco = (dy1*y2+dy2*y1) / (dy1+dy2);
+    graphReco -> GetPoint(graphReco->GetN(),xReco,yReco);
+    if (!saveName.IsNull())
+      outFile << xReco << " " << yReco << endl;
+  }
+  return graphReco;
 }
 
 #endif
