@@ -57,15 +57,19 @@ namespace ejungwoo
   void padxy(TVirtualPad *pad, double &x1, double &y1);
   void padxy(TVirtualPad *pad, double &x1, double &y1, double &dx, double &dy, double &xUnit, double &yUnit);
 
-  TPaveText*  newpt(TString content, TVirtualPad *vpad, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0);
-
   TCanvas*    canvas(const char *nameCvs, int nx, int ny, const char *nameConf="");
   TCanvas*    canvas(const char *nameCvs="", const char *nameConf="") { return canvas(nameCvs, 1, 1, nameConf); }
-  TH1*        make (TH1* hist, TVirtualPad *vpad, int idx=0, const char *drawOption="");
-  TH1*        draw (TH1* hist, TVirtualPad *vpad, int idx=0, const char *drawOption="");
-  TGaxis*     drawz(TH1* hist, TVirtualPad *vpad, int idx=0, const char *titlez="");
-  TLegend*    make(TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
-  TLegend*    draw(TLegend* legend, TVirtualPad *vpad, int idx=0, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
+  TH1*        make (TH1* hist, TVirtualPad *vpad, const char *drawOption="");
+  TH1*        draw (TH1* hist, TVirtualPad *vpad, const char *drawOption="");
+  TGaxis*     drawz(TH1* hist, TVirtualPad *vpad, const char *titlez="");
+  TLegend*    make(TLegend* legend, TVirtualPad *vpad, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
+  TLegend*    draw(TLegend* legend, TVirtualPad *vpad, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0, double marginObj=-1);
+  TPaveText*  newpt(TString content, TVirtualPad *vpad, double x1InRatio=-1, double y1InRatio=-1, double dxInRatio=0, double dyInRatio=0);
+
+  TH1 *tp(TTree *tree, TString formula, TCut cut="", TString name="", TString title="", int nx=0, int x1=0, int x2=0, int ny=0, int y1=0, int y2=0);
+
+  TString tok(TString line, TString token, int i);
+  TString tok(TObjArray *line, int i);
 
   void savePDF(const char *nameVersion="");
   void savePNG(const char *nameVersion="");
@@ -204,6 +208,10 @@ class ejungwoo::binning
       return line;
     }
 
+    void operator=(const int n) {
+      fN = n;
+    }
+
     void operator=(const binning binn) {
       fN = binn.getN();
       fMin = binn.getMin();
@@ -214,6 +222,7 @@ class ejungwoo::binning
       fSelection = binn.getSelection();
     }
 
+    ejungwoo::binning2 mult(const binning *binn);
     ejungwoo::binning2 operator*(const binning binn);
 
     const char *nnmm() { return Form("%s_%d_%.2f_%.2f",fExpression,fN,fMin,fMax); }
@@ -273,6 +282,9 @@ class ejungwoo::binning2
 
 ejungwoo::binning2 ejungwoo::binning::operator*(const binning binn) {
   return binning2(fTitle,fExpression,fN,fMin,fMax, binn.getTitle(),binn.getExpression(),binn.getN(),binn.getMin(),binn.getMax());
+}
+ejungwoo::binning2 ejungwoo::binning::mult(const binning *binn) {
+  return binning2(fTitle,fExpression,fN,fMin,fMax, binn->getTitle(),binn->getExpression(),binn->getN(),binn->getMin(),binn->getMax());
 }
 
 TObjArray *ejungwoo::binning2::rangeBoxGrid() {
@@ -544,6 +556,70 @@ TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameC
   return cvs;
 }
 
+TH1 *ejungwoo::tp(TTree *tree, TString formula, TCut cut, TString name, TString title, int nx, int x1, int x2, int ny, int y1, int y2)
+{
+  TString bnamex;
+  TString bnamey;
+  if(formula.Index(":")>=0) {
+    TObjArray *tokens = formula.Tokenize(":");
+    TString bnamex=((TObjString *)tokens->At(1))->GetString();
+    TString bnamey=((TObjString *)tokens->At(0))->GetString();
+  }
+  else
+    bnamex = formula;
+
+  if(nx<1) nx=200;
+  if(formula.Index(":")>=0 && ny<1) ny=200;
+
+  if (x1==0&&x2==0) {
+    x1 = tree -> GetMinimum(bnamex);
+    x2 = tree -> GetMaximum(bnamex);
+    auto x3 = (x2-x1)/10.;
+    x2 = x2+x3;
+    x1 = x1-x3;
+  }
+  if (ny>0&&y1==0&&y2==0) {
+    y1 = tree->GetMinimum(bnamey);
+    y2 = tree->GetMaximum(bnamey);
+    auto y3 = (y2-y1)/10.;
+    y2 = y2+y3;
+    y1 = y1-y3;
+  }
+
+  TH1 *histProjected;
+  if(ny>0) {
+    if(title.IsNull()) title = name+";"+bnamex+";"+bnamey;
+    else if (title.Index(";")<0)
+      title = title+";"+bnamex+";"+bnamey;
+    histProjected = new TH2D(name,title,nx,x1,x2,ny,y1,y2);
+  }
+  else {
+    if(title.IsNull()) title = name+";"+formula;
+    histProjected = new TH1D(name,title,nx,x1,x2);
+    if (y1!=0||y2!=0) {
+      histProjected -> SetMinimum(y1);
+      histProjected -> SetMinimum(y2);
+    }
+  }
+
+  Long64_t entries = tree->Project(name,formula,cut);
+
+  return histProjected;
+}
+
+TString ejungwoo::tok(TString line, TString token, int i)
+{
+  auto array = line.Tokenize(token);
+  if (array -> GetEntries()==0)
+    return "";
+
+  return tok(line.Tokenize(token),i);
+}
+
+TString ejungwoo::tok(TObjArray *line, int i) {
+  return ((TObjString *) line->At(i))->GetString();
+}
+
 void ejungwoo::savePDF(const char *nameVersion) {
   if (strcmp(nameVersion,"")!=0) {
     gSystem -> mkdir(nameVersion);
@@ -625,14 +701,14 @@ void ejungwoo::write(TObject *obj)
 
 /// Make hist fit to the pad. If idx>0, pad where legend is drawn is selected by vpad->cd(idx). 
 /// Draw histogram before make(TH1* hist, TVirtualPad *vpad) to apply main title attribute.
-TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOption)
+TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, const char *drawOption)
 {
   auto pad = (TPad *) vpad;
-  auto padi = pad -> cd(idx);
+  auto padi = pad -> cd();
 
   int nx = 1;
   int ny = 1;
-  int idx0 = idx;
+  int idx0 = 0;
   const char *nameConfCvs = "";
   if (padi!=nullptr) {
     TString titleCvs = padi -> GetTitle();
@@ -641,7 +717,7 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
       nameConfCvs = ((TObjString *) tokens->At(0))->GetString();
       nx = ((TObjString *) tokens->At(1))->GetString().Atoi();
       ny = ((TObjString *) tokens->At(2))->GetString().Atoi();
-      if (idx==0) idx0 = ((TObjString *) tokens->At(3))->GetString().Atoi();
+      idx0 = ((TObjString *) tokens->At(3))->GetString().Atoi();
     }
     else
       nameConfCvs = fNameCanvasConf;
@@ -763,14 +839,14 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOptio
 }
 
 /// Make z axis
-TGaxis *ejungwoo::drawz(TH1* hist, TVirtualPad *vpad, int idx, const char *titlez)
+TGaxis *ejungwoo::drawz(TH1* hist, TVirtualPad *vpad, const char *titlez)
 {
   auto pad = (TPad *) vpad;
-  auto padi = pad -> cd(idx);
+  auto padi = pad -> cd();
 
   int nx = 1;
   int ny = 1;
-  int idx0 = idx;
+  int idx0 = 0;
   const char *nameConfCvs = "";
   if (padi!=nullptr) {
     TString titleCvs = padi -> GetTitle();
@@ -778,7 +854,7 @@ TGaxis *ejungwoo::drawz(TH1* hist, TVirtualPad *vpad, int idx, const char *title
     nameConfCvs = ((TObjString *) tokens->At(0))->GetString();
     nx = ((TObjString *) tokens->At(1))->GetString().Atoi();
     ny = ((TObjString *) tokens->At(2))->GetString().Atoi();
-    if (idx==0) idx0 = ((TObjString *) tokens->At(3))->GetString().Atoi();
+    idx0 = ((TObjString *) tokens->At(3))->GetString().Atoi();
   }
 
   const char *nameConf = ((padi!=nullptr)?nameConfCvs:fNameCanvasConf);
@@ -831,11 +907,11 @@ TGaxis *ejungwoo::drawz(TH1* hist, TVirtualPad *vpad, int idx, const char *title
 }
 
 /// Make hist fit to the pad and draw with drawOption.
-TH1 *ejungwoo::draw(TH1 *hist, TVirtualPad *vpad, int idx, const char *drawOption)
+TH1 *ejungwoo::draw(TH1 *hist, TVirtualPad *vpad, const char *drawOption)
 {
-  vpad -> cd(idx);
+  vpad -> cd();
   hist -> Draw(drawOption);
-  make(hist,vpad,idx,drawOption);
+  make(hist,vpad,drawOption);
   return hist;
 }
 
@@ -883,7 +959,7 @@ void ejungwoo::padxy(TVirtualPad *pad, double &x1, double &y1, double &dx, doubl
 /// @param dxInRatio  Set dy (legend width) by the ratio inside the histogram frame (0~1).  If dxInRatio<=0 (by default), the legend width is calcuated from the text length.
 /// @param dyInRatio  Set dy (legend height) by the ratio inside the histogram frame (0~1). If dyInRatio<=0 (by default), the legend height is calcuated from the number of legend entries.
 /// @param marginObj  Set ratio of the space occupied by object in the legend (compared to the descriptions). By default, it is >0.25
-TLegend *ejungwoo::make(TLegend *legend, TVirtualPad *vpad, int idx, double x1InRatio, double y1InRatio, double dxInRatio, double dyInRatio, double marginObj)
+TLegend *ejungwoo::make(TLegend *legend, TVirtualPad *vpad, double x1InRatio, double y1InRatio, double dxInRatio, double dyInRatio, double marginObj)
 {
   auto pad = (TPad *) vpad;
 
@@ -905,7 +981,7 @@ TLegend *ejungwoo::make(TLegend *legend, TVirtualPad *vpad, int idx, double x1In
   auto par = conf(nameConf);
   setCanvasPar(par);
 
-  auto padi = pad -> cd(idx);
+  auto padi = pad -> cd();
 
   double dxTextMax = 0.;
   auto dxNorm = TLatex(0,0,"0").GetXsize();
@@ -964,10 +1040,10 @@ TLegend *ejungwoo::make(TLegend *legend, TVirtualPad *vpad, int idx, double x1In
 }
 
 /// Make legend fit to the pad and draw.
-TLegend *ejungwoo::draw(TLegend* legend, TVirtualPad *vpad, int idx, double x1InRatio, double y1InRatio, double dxInRatio, double dyInRatio, double marginObj)
+TLegend *ejungwoo::draw(TLegend* legend, TVirtualPad *vpad, double x1InRatio, double y1InRatio, double dxInRatio, double dyInRatio, double marginObj)
 {
-  vpad -> cd(idx);
-  make(legend,vpad,idx,x1InRatio,y1InRatio,dxInRatio,dyInRatio,marginObj);
+  vpad -> cd();
+  make(legend,vpad,x1InRatio,y1InRatio,dxInRatio,dyInRatio,marginObj);
   legend -> Draw();
   return legend;
 }
