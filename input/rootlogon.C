@@ -1,3 +1,4 @@
+// This rootlogon.C is copied and modified from namespace_ejungwoo/input/rootlogon.C
 {
   cout << "Loading namespace ejungwoo" << endl;
 
