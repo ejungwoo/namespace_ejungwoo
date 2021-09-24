@@ -1,4 +1,4 @@
-void draw_all_conf(TString selectString="att2")
+void draw_all_conf(TString selectString="att")
 {
   TIter nextFile(TSystemDirectory("thisDir",".").GetListOfFiles());
   while (auto file = (TSystemFile *) nextFile())
@@ -10,8 +10,9 @@ void draw_all_conf(TString selectString="att2")
     name.ReplaceAll(".par","");
     if (!selectString.IsNull() && name.Index(selectString.Data())<0) continue;
 
+    auto par = conf(name);
+
     if (name.Index("att")==0) {
-      auto par = conf(name);
       auto numIndex = par -> GetParVInt("line_color").size();
       auto hist = new TH2D(name,name+";;index",100,0,18,100,-.999,numIndex-.001);
       auto cvs = canvas(name,"wide");
@@ -33,17 +34,37 @@ void draw_all_conf(TString selectString="att2")
         pt -> Draw();
       }
     }
-    else if (name.Index("nn")>=0)
-    {
-      auto cvs22 = canvas(name,2,2,name);
-      auto hist1 = new TH1D(name+1,name+";x;y",10,0,10); draw(hist1,cvs22->cd(1));
-      auto hist2 = new TH1D(name+2,name+";x;y",10,0,10); draw(hist2,cvs22->cd(2));
-      auto hist3 = new TH1D(name+3,name+";x;y",10,0,10); draw(hist3,cvs22->cd(3));
-      auto hist4 = new TH1D(name+4,name+";x;y",10,0,10); draw(hist4,cvs22->cd(4));
-    }
     else {
-      auto hist = new TH1D(name,name+";x;y",10,0,10);
-      draw(hist,canvas(name,name));
+      TCanvas *cvs;
+      if (name.Index("nn")>=0)
+      {
+        cvs = canvas(name,2,2,name);
+        auto hist1 = new TH1D(name+1,name+";x;y",10,0,10); draw(hist1,cvs->cd(1));
+        auto hist2 = new TH1D(name+2,name+";x;y",10,0,10); draw(hist2,cvs->cd(2));
+        auto hist3 = new TH1D(name+3,name+";x;y",10,0,10); draw(hist3,cvs->cd(3));
+        auto hist4 = new TH1D(name+4,name+";x;y",10,0,10); draw(hist4,cvs->cd(4));
+        if (par -> CheckPar("side_pad")) {
+          drawef(cvs -> cd(99));
+          auto legend = new TLegend();
+          legend -> AddEntry(att(new TGraph(),1), "graph1", "p");
+          legend -> AddEntry(att(new TGraph(),2), "graph2", "l");
+          legend -> AddEntry(att(new TGraph(),3), "graph3", "f");
+          legend -> AddEntry(att(new TGraph(),4), "graph4", "pl");
+          draw(legend,cvs->cd(99),0,0,1,1,.1);
+        }
+      }
+      else {
+        cvs = canvas(name,name);
+        auto hist1 = new TH1D(name+1,name+";x;y",10,0,10);
+        draw(hist1,cvs);
+      }
+
+      auto legend = new TLegend();
+      legend -> AddEntry(att(new TGraph(),1), "graph1", "p");
+      legend -> AddEntry(att(new TGraph(),2), "graph2", "l");
+      legend -> AddEntry(att(new TGraph(),3), "graph3", "f");
+      legend -> AddEntry(att(new TGraph(),4), "graph4", "pl");
+      draw(legend,cvs->cd(1));
     }
   }
 }
