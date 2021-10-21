@@ -19,7 +19,6 @@ namespace ejungwoo
 {
   class binning; ///< 1-dimensional binning class
   class binning2; ///< 2-dimensional binning class
-  class egraph;
   typedef KBParameterContainer parContainer; ///< parameter container (for configuration) class.
 
   class parCanvas {
@@ -52,6 +51,7 @@ namespace ejungwoo
   const char *fNameCanvasConf = "single";
   parAttribute fParAtt;
   parCanvas fParCvs;
+  void setNextHistIndex(int val) { fHistIndex = val; }
 
   parContainer *conf(const char *nameConf);
   bool findConf(TVirtualPad *vpad, TString &nameConfCvs, int &nx, int &ny, int &cidx);
@@ -65,34 +65,39 @@ namespace ejungwoo
   TCanvas*    canvas(const char *nameCvs, int nx, int ny, const char *nameConf="");
   TCanvas*    canvas(const char *nameCvs, int nn, const char *nameConf="");
   TCanvas*    canvas(const char *nameCvs="", const char *nameConf="") { return canvas(nameCvs, 1, 1, nameConf); }
+  int         icanvas() { return fCanvasIndex; }
   TPad*       innerpad(TVirtualPad *vpad, double xr1, double yr1, double xr2, double yr2);
   TH1*        make(TH1* hist, TVirtualPad *vpad, TString drawOption="");
   TH1*        draw(TH1* hist, TVirtualPad *vpad=nullptr, TString drawOption="");
-  TGraph *    draw(TGraph *graph, TVirtualPad *vpad=nullptr, TString drawOption="");
-  TGaxis*     drawz(TH1* hist, TVirtualPad *vpad, const char *titlez="");
+  TGraph*     draw(TGraph *graph, TVirtualPad *vpad=nullptr, TString drawOption="");
+  TF1*        draw(TF1 *func, TVirtualPad *vpad=nullptr, TString drawOption="");
+  TGaxis*     drawz(TH1* hist, TVirtualPad *vpad, const char *titlez="", bool logaxis=false);
   void        drawef(TVirtualPad *vpad);
   TLegend*    make(TLegend* legend, TVirtualPad *vpad, double x1ir=-1, double y1ir=-1, double dxir=0, double dyir=0, double marginObj=-1, int tf=-1, double tz=-1, int ta=-1, int fs=-1, int fc=-1, int bs=-1);
   TLegend*    draw(TLegend* legend, TVirtualPad *vpad, double x1ir=-1, double y1ir=-1, double dxir=0, double dyir=0, double marginObj=-1, int tf=-1, double tz=-1, int ta=-1, int fs=-1, int fc=-1, int bs=-1);
   TPaveText*  newpt(TString content, TVirtualPad *vpad, double x1ir=-1, double y1ir=-1, double dxir=0, double dyir=0, int tf=133, double tz=20, int ta=12, int fs=0, int fc=0, int bs=0);
+  TLatex*     newtt(TString content, double x, double y, int tf=133, double tz=20, int ta=12, int tc=kBlack);
   TH1*        project(TTree *tree, TString formula, TCut cut="", TString name="", TString title="", int nx=0, double x1=0, double x2=0, int ny=0, double y1=0, double y2=0);
   TH1*        project(TTree *tree, TString formula, int nx, double x1=0, double x2=0, int ny=0, double y1=0, double y2=0, TCut cut="", TString name="", TString title="")
               { return project(tree, formula, cut, name, title, nx, x1, x2, ny, y1, y2); }
 
   TPad*       redraw(TPad *pad);
 
-  TGraphErrors *tograph(TH1D *,TString opt="exey");
+  TGraphErrors *tograph(TH1D *,TString opt="ex;ey");
+  double get_x(TGraph *graph,int i);
+  double get_y(TGraph *graph,int i);
 
-  void saveRoot(TObject *obj, TString nameFile="", TString nameVersion="", bool savePrimitives=false, bool simplifyNames=false);
-  void savePDF(TCanvas *cvs, TString nameVersion="");
-  void savePNG(TCanvas *cvs, TString nameVersion="");
-  void saveEPS(TCanvas *cvs, TString nameVersion="");
+  void saveRoot(TObject *obj, TString nameFile="", TString nameVersion="zz", bool savePrimitives=false, bool simplifyNames=false);
+  void savePDF(TCanvas *cvs, TString nameVersion="zz");
+  void savePNG(TCanvas *cvs, TString nameVersion="zz");
+  void saveEPS(TCanvas *cvs, TString nameVersion="zz");
 
-  void saveRoot(TString nameVersion="", bool savePrimitives=false, bool simplifyNames=false);
-  void savePDF(TString nameVersion="");
-  void savePNG(TString nameVersion="");
-  void saveEPS(TString nameVersion="");
+  void saveRoot(TString nameVersion="zz", bool savePrimitives=false, bool simplifyNames=false);
+  void savePDF(TString nameVersion="zz");
+  void savePNG(TString nameVersion="zz");
+  void saveEPS(TString nameVersion="zz");
 
-  void saveAll(TString nameVersion="");
+  void saveAll(TString nameVersion="zz");
   void write(TObject *obj);
 
   TString tok(TString line, TString token, int i);
@@ -414,7 +419,7 @@ TH1D *ejungwoo::binning::project(TTree *tree, TCut selection, TString name, TStr
 }
 
 TString ejungwoo::binning::printi(bool pout) const {
-  TString line = Form("%s(%d)=%s~%s",fExpression.Data(),ii(),toString(min()).Data(),toString(max()).Data());
+  TString line = Form("%s(%d)=%s~%s(%s)",fExpression.Data(),ii(),toString(low()).Data(),toString(high()).Data(),toString(val()).Data());
   if (pout)
     cout << line << endl;
   return line;
@@ -596,51 +601,9 @@ TGraph *ejungwoo::binning2::rangeBox(int binX, int binY) const {
   return graph;
 }
 
-class ejungwoo::egraph : public TGraphErrors {
-  private :
-    vector<double> fErrorX2;
-    vector<double> fErrorY2;
+double ejungwoo::get_x(TGraph *graph, int i) { double x, y; graph->GetPoint(i,x,y); return x; }
+double ejungwoo::get_y(TGraph *graph, int i) { double x, y; graph->GetPoint(i,x,y); return y; }
 
-  public :
-    egraph() : TGraphErrors() {}
-    ~egraph() {}
-
-    double get_x(int i) { double x, y; GetPoint(i,x,y); return x; }
-    double get_y(int i) { double x, y; GetPoint(i,x,y); return y; }
-    double get_xe(int i) { return GetErrorX(i); }
-    double get_ye(int i) { return GetErrorY(i); }
-    double get_xe1(int i) { return get_xe(i); }
-    double get_ye1(int i) { return get_ye(i); }
-    double get_xe2(int i) { return fErrorX2.at(i); }
-    double get_ye2(int i) { return fErrorY2.at(i); }
-
-    void seti(int i, double x, double y, double xe1=0, double ye1=0, double xe2=0, double ye2=0) {
-      SetPoint(i,x,y);
-      SetPointError(i,xe1,ye1);
-      if (fErrorX2.size()==i) {
-        fErrorX2.push_back(xe2);
-        fErrorY2.push_back(ye2);
-      } else {
-        fErrorX2[i] = xe2;
-        fErrorY2[i] = ye2;
-      }
-    }
-    void set(double x, double y, double xe1=0, double ye1=0, double xe2=0, double ye2=0) { seti(GetN(),x,y,xe1,ye1,xe2,ye2); }
-
-    /*
-    void draw_ebox(TString opt="") {
-      if (!opt.IsNull()) Draw(opt);
-      auto nn = GetN();
-      for (auto i=0; i<nn; ++i) {
-        auto x = get_x(i);
-        auto x = get_x(i);
-        auto line1 = new TLine
-      }
-    }
-    void draw_area();
-    */
-};
- 
 /// Get configuration parameter container from [nameConf].conf file.
 KBParameterContainer *ejungwoo::conf(const char *nameConf)
 {
@@ -811,34 +774,14 @@ TPaveText* ejungwoo::newpt(TString content, TVirtualPad *vpad, double x1, double
   return paveText;
 }
 
-/*
-TCanvas* ejungwoo::canvas(const char *nameCvs, int dx, int dy, TArrayD poss)
-{
-  if (strcmp(nameCvs,"")==0)
-    nameCvs = Form("canvas_%d",fCanvasIndex);
-  fCanvasIndex++;
-
-  auto cvs = new TCanvas(nameCvs, nameCvs, dx, dy);
-
-  int countPad = 0;
-  int numPads = poss.GetSize()/4;
-  for (auto iPad=0; iPad<numPads; ++iPad)
-  {
-    countPad++;
-    auto x1 = poss.At(numPads*iPad+0);
-    auto y1 = poss.At(numPads*iPad+1);
-    auto x2 = poss.At(numPads*iPad+2);
-    auto y2 = poss.At(numPads*iPad+3);
-
-    const char *namePad = Form("%s_%d",cvs->GetName(),countPad);
-    auto padi = new TPad(namePad,"",x1,y1,x2,y2);
-    padi -> SetNumber(countPad);
-    padi -> Draw();
-  }
-
-  return cvs;
+TLatex* ejungwoo::newtt(TString content, double x, double y, int tf, double tz, int ta, int tc) {
+  auto tt = new TLatex(x,y,content);
+  tt -> SetTextFont(tf);
+  tt -> SetTextSize(tz);
+  tt -> SetTextAlign(ta);
+  tt -> SetTextColor(tc);
+  return tt;
 }
-*/
 
 TCanvas *ejungwoo::canvas(const char *nameCvs, int nn, const char *nameConf)
 {
@@ -971,6 +914,12 @@ TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameC
       else if (isLeft)     x2 = x1 + padRatioInnEdge1[0];
       else if (isRight)    x2 = x1 + padRatioInnEdge1[1];
       if (x1<0) x1 = 0;
+
+      //cout << par->GetName() << endl;
+      //if (TString(par->GetName())=="paper_nn6") {
+      //  if (idx<2) y1 = 0.40;
+      //  else y2 = 0.40;
+      //}
 
       const char *namePad = Form("%s_%d",cvs->GetName(),countPad);
       const char *titlePad = Form("____  %s.%d.%d.%d",nameConf,nx,ny,countPad);
@@ -1211,17 +1160,40 @@ TGraphErrors *ejungwoo::tograph(TH1D *hist, TString opt)
   binning bnx(hist);
   auto graph = new TGraphErrors();
   bool ignore0 = false;
-  if (opt.Index("0")>=0) ignore0 = true;
+  bool copyex = false;
+  bool copyey = false;
+  double xlow = -DBL_MAX;
+  double xhigh = DBL_MAX;
+  double ylow = -DBL_MAX;
+  double yhigh = DBL_MAX;
+
+  auto optArray = opt.Tokenize(";");
+  auto numArray = optArray->GetEntries();
+  for (auto i=0; i<numArray; ++i) {
+    TString option = tok(optArray,i);
+    if (option=="0") ignore0 = true;
+    if (option=="ex") copyex = true;
+    if (option=="ey") copyey = true;
+    if (option.Index("x<")==0) { option.ReplaceAll("x<",""); xhigh=option.Atof(); }
+    if (option.Index("x>")==0) { option.ReplaceAll("x>",""); xlow =option.Atof(); }
+    if (option.Index("y<")==0) { option.ReplaceAll("y<",""); yhigh=option.Atof(); }
+    if (option.Index("y>")==0) { option.ReplaceAll("y>",""); ylow =option.Atof(); }
+  }
+
   while (bnx.next()) {
+    if (bnx.val()<xlow ) continue;
+    if (bnx.val()>xhigh) continue;
+    if (bnx.val()<xlow ) continue;
+    if (bnx.val()>xhigh) continue;
+
     auto content = hist -> GetBinContent(bnx.bi());
     if (ignore0 && content==0) {}
     else {
       graph -> SetPoint(graph->GetN(), bnx.val(), content);
       double xerror = bnx.width()/2.;
       double yerror = hist -> GetBinError(bnx.bi());
-      if (opt.Index("ex")<0) xerror = 0;
-      if (opt.Index("ey")<0) yerror = 0;
-      //cout << bnx.val() << " " << content << " " << xerror << " " << yerror << endl;
+      if (!copyex) xerror = 0;
+      if (!copyey) yerror = 0;
       graph -> SetPointError(graph->GetN()-1, xerror, yerror);
     }
   }
@@ -1376,7 +1348,7 @@ void ejungwoo::saveRoot(TObject *obj, TString nameFile, TString nameVersion, boo
     fileOut = new TFile(nameFile, "recreate");
   }
 
-  auto saveCanvasRoot = [fileOut,savePrimitives,pathToData,simplifyNames](TCanvas *cvs)
+  auto saveCanvasRoot = [fileOut,savePrimitives,pathToData,simplifyNames](TPad *cvs)
   {
     cvs -> Modified();
     cvs -> Update();
@@ -1448,14 +1420,16 @@ void ejungwoo::saveRoot(TObject *obj, TString nameFile, TString nameVersion, boo
   };
 
   if (obj==nullptr) {
-    auto numCanvases = fCanvasArray -> GetEntriesFast();
+    int numCanvases = 0;
+    if (fCanvasArray!=nullptr)
+      numCanvases = fCanvasArray -> GetEntriesFast();
     for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
       auto cvs = (TCanvas *) fCanvasArray -> At(iCanvas);
       saveCanvasRoot(cvs);
     }
   }
-  else if (obj->InheritsFrom(TCanvas::Class()))
-    saveCanvasRoot((TCanvas *) obj);
+  else if (obj->InheritsFrom(TPad::Class()))
+    saveCanvasRoot((TPad *) obj);
   else {
     if (nameFile.IsNull())
       nameFile = pathToData+obj->GetName()+".root";
@@ -1633,7 +1607,7 @@ TH1 *ejungwoo::make(TH1 *hist, TVirtualPad *vpad, TString drawOption)
 }
 
 /// Make z axis
-TGaxis *ejungwoo::drawz(TH1* hist, TVirtualPad *vpad, const char *titlez)
+TGaxis *ejungwoo::drawz(TH1* hist, TVirtualPad *vpad, const char *titlez, bool logaxis)
 {
   auto pad = (TPad *) vpad;
   auto padi = pad -> cd();
@@ -1664,7 +1638,7 @@ TGaxis *ejungwoo::drawz(TH1* hist, TVirtualPad *vpad, const char *titlez)
   }
 
   auto zaxis = new TGaxis(padi->GetUxmax(), hist->GetYaxis()->GetXmin(), padi->GetUxmax(), hist->GetYaxis()->GetXmax(),
-      hist->GetYaxis()->GetXmin(), hist->GetYaxis()->GetXmax(), fParCvs.axisNdivision[2] ,"+L");
+      hist->GetYaxis()->GetXmin(), hist->GetYaxis()->GetXmax(), fParCvs.axisNdivision[2] ,(logaxis?"+LG":"+L"));
 
   //cout
   //  << padi->GetUxmax() << " "
@@ -1738,6 +1712,22 @@ TGraph *ejungwoo::draw(TGraph *graph, TVirtualPad *vpad, TString drawOption)
   }
   graph -> Draw(drawOption);
   return graph;
+}
+
+TF1 *ejungwoo::draw(TF1 *func, TVirtualPad *vpad, TString drawOption)
+{
+  if (vpad==nullptr)
+    vpad = canvas();
+  vpad -> cd();
+  if (vpad->GetPrimitive("TFrame")!=nullptr) {
+    if (drawOption.Index("same")<0) drawOption += "same";
+  } else {
+    drawOption.ReplaceAll("same","");
+    //if (drawOption.Index("a")<0) drawOption += "a";
+    if (drawOption.Index("l")<0) drawOption += "l";
+  }
+  func -> Draw(drawOption);
+  return func;
 }
 
 void ejungwoo::findxy(TVirtualPad *pad, double &x1, double &y1)
@@ -1829,9 +1819,15 @@ TLegend *ejungwoo::make(TLegend *legend, TVirtualPad *vpad, double x1InRatio=-1,
     fWidthDefaultLegend = 0;
   }
 
-  if (dxInRatio<=0) dxInRatio = (fWidthDefaultLegend + dxTextMax * fWidthPerLengthLegend) * fLegendTextScale;
+  auto numColumns = legend -> GetNColumns();
+  auto numRows = legend -> GetNRows();
+  if (numColumns>1) {
+    numRows = ceil(double(numRows) / numColumns);
+  }
+
+  if (dxInRatio<=0) dxInRatio = (fWidthDefaultLegend + dxTextMax * fWidthPerLengthLegend) * fLegendTextScale * numColumns;
   if (dxInRatio>1) dxInRatio = 1;
-  if (dyInRatio<=0) dyInRatio = (legend -> GetNRows() * fLegendHeightPerEntry) * fLegendTextScale;
+  if (dyInRatio<=0) dyInRatio = (numRows * fLegendHeightPerEntry) * fLegendTextScale;
 
   double x1Legend = x1InRatio;
   double y1Legend = y1InRatio;
@@ -1861,6 +1857,7 @@ TLegend *ejungwoo::make(TLegend *legend, TVirtualPad *vpad, double x1InRatio=-1,
   legend -> SetX2(x2Legend + xOffset*xUnit);
   legend -> SetY1(y1Legend + yOffset*yUnit);
   legend -> SetY2(y2Legend + yOffset*yUnit);
+
   legend -> SetFillStyle(fs);
   legend -> SetFillColor(fc);
   legend -> SetBorderSize(bs);
