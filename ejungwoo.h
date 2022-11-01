@@ -1969,6 +1969,7 @@ TGraphErrors *ejungwoo::tograph(TH1D *hist, TString opt, int iatt, TString nameC
       graph -> SetPoint(graph->GetN(), xvalue, yvalue);
       double xerror = bnx.width()/2.;
       double yerror = hist -> GetBinError(bnx.bi());
+      yerror = yerror *multy;
       if (!copyex) xerror = 0;
       if (!copyey) yerror = 0;
       graph -> SetPointError(graph->GetN()-1, xerror, yerror);
