@@ -1,5 +1,7 @@
 #ifndef ejungwo
 
+#include "KBGlobal.hh"
+
 #include "TClonesArray.h"
 #include "TObjArray.h"
 #include "TCanvas.h"
@@ -27,6 +29,7 @@ namespace ejungwoo
   class edata;
   class binning; ///< 1-dimensional binning class
   class binning2; ///< 2-dimensional binning class
+
   typedef KBParameterContainer parContainer; ///< parameter container (for configuration) class.
   class TParCanvas {
     public:
@@ -176,16 +179,23 @@ namespace ejungwoo
   TParticlePDG *particle(TString name);
   TParticlePDG *particle(int pdg);
   TString makeNameVersion(TString nameVersion="", bool createDirectory=true);
+
   void saveRoot(TObject *obj, TString nameFile="", TString nameVersion="", bool savePrimitives=false, bool simplifyNames=false);
-  void savePDF(TCanvas *cvs, TString nameVersion="");
-  void savePNG(TCanvas *cvs, TString nameVersion="");
-  void saveEPS(TCanvas *cvs, TString nameVersion="");
+  void savePDF (TCanvas *cvs, TString nameVersion="");
+  void savePNG (TCanvas *cvs, TString nameVersion="");
+  void saveEPS (TCanvas *cvs, TString nameVersion="");
   void saveRoot(TString nameVersion="", bool savePrimitives=false, bool simplifyNames=false);
-  void savePDF(TString nameVersion="");
-  void savePNG(TString nameVersion="");
-  void saveEPS(TString nameVersion="");
-  void saveAll(TString nameVersion="");
-  void write(TObject *obj);
+  void savePDF (TString nameVersion="");
+  void savePNG (TString nameVersion="");
+  void saveEPS (TString nameVersion="");
+  void saveAll (TString nameVersion="");
+
+  void dumpData(TString nameVersion="", bool simplifyNames=true);
+  void dumpData(TObject *obj, TString nameFile="", TString nameVersion="", bool simplifyNames=true);
+  void dumpCanvasRoot(TPad *cvs, TFile *fileOut, TString pathToData, bool simplifyNames=true, int padNumber=0);
+  void dumpAll (TString nameVersion="");
+
+  //void write(TObject *obj);
 };
 
 class ejungwoo::efile
@@ -296,11 +306,13 @@ class ejungwoo::binning
     binning(TArrayD arr, const char *ttl="", const char *fml="", const char *sel="") : binning(0, arr, ttl, fml, sel) {}
     binning(TTree *tree, const char *branchName) : binning() { make(tree, branchName); }
     binning(TH1 *hist, int axis_123=1) : binning() { make(hist, axis_123); }
+    binning(TGraph *graph) : binning() { make(graph); }
     ~binning() {}
 
     void init();
     void initArray(int nbins, TArrayD array);
     void make(TH1 *hist, int axis_123=1);
+    void make(TGraph *graph);
     void make(TTree *tree, const char* branchName);
     void set(double nbins, double min, double max, const char *ttl="", const char *fml="", const char *sel="");
     void set(int nbins, TArrayD array, const char *ttl="", const char *fml="", const char *sel="");
@@ -481,6 +493,67 @@ void ejungwoo::binning::initArray(int nbins, TArrayD array) {
   fBinArray = array;
   fMin = fBinArray[0];
   fMax = fBinArray[nValues-1];
+}
+
+void ejungwoo::binning::make(TGraph *graph)
+{
+  //kb_debug << "binning make graph" << endl;
+  fTitle = graph -> GetTitle();
+  fNbins = graph -> GetN();
+
+  double x1, y1;
+  double x2, y2;
+  //kb_debug << "binning make graph" << endl;
+
+  if (fNbins<2) return;
+
+  //kb_debug << "binning make graph" << endl;
+  fSpacing = kContinuousSpacing;
+  graph -> GetPoint(0,x1,y1);
+  graph -> GetPoint(1,x2,y2);
+  fWidth = x2 - x1;
+  x1 = x2;
+  for (auto iPoint=2; iPoint<fNbins; ++iPoint) {
+    graph -> GetPoint(iPoint,x2,y2);
+    double xwidth = x2 - x1;
+    if (abs(fWidth-xwidth)>fWidth*0.0001) {
+      fSpacing = kDescreteSpacing;
+      break;
+    }
+    x1 = x2;
+    y1 = y2;
+  }
+  //kb_debug << "???????" << endl;
+
+  fSpacing = kDescreteSpacing;
+  if (fSpacing == kContinuousSpacing) {
+  //kb_debug << "case 1" << endl;
+    graph -> GetPoint(0,x1,y1);
+    graph -> GetPoint(fNbins-1,x2,y2);
+    fMin = x1 - 0.5*fWidth;
+    fMax = x2 + 0.5*fWidth;
+  }
+  else if (graph->InheritsFrom(TGraphErrors::Class())) {
+  //kb_debug << "case 2" << endl;
+    fWidth = -1;
+    fBinArray.Reset();
+    fBinArray.Set(fNbins+1);
+    double ex;
+    for (auto iPoint=0; iPoint<fNbins; ++iPoint) {
+      graph -> GetPoint(iPoint,x1,y1);
+      ex = graph -> GetErrorX(iPoint);
+      fBinArray.AddAt(x1-0.5*ex,iPoint);
+      //kb_debug << iPoint << " : " << x1-0.5*ex << endl;
+    }
+    fBinArray.AddAt(x1+0.5*ex,fNbins);
+    //kb_debug << fNbins << " :" << x1+0.5*ex << endl;
+
+    fMin = fBinArray.At(0);
+    fMax = fBinArray.At(fNbins-1);
+    //kb_debug << fMin << " " << fMax << endl;
+  }
+
+  //kb_debug << "binning make graph end" << endl;
 }
 
 void ejungwoo::binning::make(TH1 *hist, int axis_123) {
@@ -828,7 +901,13 @@ class ejungwoo::epoint
       for (auto i=0; i<3; ++i) { fXYZ[i][0] = 0; fXYZ[i][1] = 0; fXYZ[i][2] = 0; }
       for (auto i=0; i<5; ++i) fErrors[i] = 0;
     }
-    void makee() { fError = 0; for (auto i=0; i<5; ++i) fError += fErrors[i]*fErrors[i]; fError = sqrt(fError); }
+    void makee() {
+      fError = 0;
+      for (auto i=0; i<5; ++i)
+        fError += fErrors[i]*fErrors[i];
+      fError = sqrt(fError);
+      //kb_debug << "eee " << fError << " " << fErrors[0] << endl;
+    }
 
   public:
     epoint() { init(); }
@@ -839,16 +918,25 @@ class ejungwoo::epoint
     void sety(double yy, double y1=0, double y2=0) { fXYZ[1][0] = yy; fXYZ[1][1] = y1; fXYZ[1][2] = y2; }
     void setz(double zz, double z1=0, double z2=0) { fXYZ[2][0] = zz; fXYZ[2][1] = z1; fXYZ[2][2] = z2; }
     void setv(double vv, double e1=0, double e2=0) { fValue     = vv; fErrors[0] = e1; fErrors[1] = e2; makee(); }
-    void sete(int ie, int ee) { fErrors[ie] = ee; makee(); }
+    void sete(int ie, double ee) {
+      //kb_debug << "eeeeeeeeeeeeee " << ie << " " << ee << endl;
+      fErrors[ie] = ee;
+      makee();
+      //kb_debug << "eee " << fError << " " << fErrors[0] << endl;
+    }
 
     void setxve(double xx, double x1, double x2, double vv, double e1, double e2, double e3=0, double e4=0, double e5=0) {
       setx(xx,x1,x2);
+      //kb_debug << endl;
+      //kb_debug << "SSSSSSSSSSSSSS " << xx << " " << e1 << endl;
       setv(vv);
+      //kb_debug << "SSSSSSSSSSSSSS " << xx << " " << e1 << endl;
       sete(0,e1);
-      sete(1,e2);
-      sete(2,e3);
-      sete(3,e4);
-      sete(4,e5);
+      //kb_debug << "SSSSSSSSSSSSSS " << xx << " " << e1 << endl;
+      //sete(1,e2);
+      //sete(2,e3);
+      //sete(3,e4);
+      //sete(4,e5);
     }
 
     double x(int i=0) { return fXYZ[0][i]; }
@@ -899,29 +987,38 @@ class ejungwoo::edata
     TString fName;
     ejungwoo::binning fBinning;
     vector<epoint> fPoints;
-    TH1D *fDataHist = nullptr;
-    TGraphErrors *fDataGraph = nullptr;
+    TObject *fDataObj = nullptr;
 
   public:
     edata(TString name="") { fName = name; }
-    edata(TH1D *hist) { initData(hist); }
-    void init() { fPoints.clear(); fDataHist = nullptr;}
+    edata(TObject *obj) {
+           if (obj->InheritsFrom(TH1::Class()))          initHist((TH1D *)obj);
+      else if (obj->InheritsFrom(TGraphErrors::Class())) initGraphErrors((TGraphErrors *)obj);
+      else if (obj->InheritsFrom(TGraph::Class()))       initGraph((TGraph *)obj);
+    }
+    void init() { fPoints.clear(); fDataObj = nullptr;}
 
-    void addPoint(epoint point1) { fPoints.push_back(point1); }//fPoints.back().fill(TString()); }
+    void addPoint(epoint point1) { fPoints.push_back(point1); }
     void setPoint(int ipoint, epoint point1) { fPoints[ipoint] = point1; }
-    void setHist(TH1D *hist) { fDataHist = (TH1D *) hist -> Clone(Form("%s_c",hist->GetName())); }
+    void setHist(TH1D *hist) { fDataObj = hist -> Clone(Form("%s_c",hist->GetName())); }
+    void setGraphErrors(TGraphErrors *graph) { fDataObj = graph -> Clone(Form("%s_c",graph->GetName())); }
+    void setGraph(TGraph *graph) { fDataObj = graph -> Clone(Form("%s_c",graph->GetName())); }
 
-    void initData(TH1D *hist);
+    void initHist(TH1D *hist);
+    void initGraphErrors(TGraphErrors *graph);
+    void initGraph(TGraph *graph);
     void initError(TH1D *hist);
     edata makeError(TH1D *hist);
 
-    void make(); ///< make fDataHist, fDataGraph
-    TH1D *getHist() { return fDataHist; }
-    TGraphErrors *getGraph() { return fDataGraph; }
+    //void make();
+    TObject *getDataObj() { return fDataObj; }
     TGraphErrors *getErrorGraph(int ierror);
 
     void print(TString format="[x] #pm [dx/2] && [v] && [e1] \% && [e2] \% \\\\", TString sformat = "%f");
+
+    void writeTree(TFile *file, TString nameTree="data", TString ttlTree="ejungwoo::edata");
     void write(TString nameFile, TString format="[x] #pm [dx/2] && [v] && [e1] \% && [e2] \% \\\\");
+
     void read(TString nameFile);
 };
 
@@ -931,30 +1028,76 @@ void ejungwoo::edata::read(TString nameFile)
   TFile *file = new TFile(nameFile,"read");
   TTree *tree = (TTree *) file -> Get("data1");
   double bx, bx1, bx2, bvalue, berror, berror1, berror2, berror3, berror4, berror5;
-  tree -> Branch("x",&bx);
-  tree -> Branch("x1",&bx1);
-  tree -> Branch("x2",&bx2);
-  tree -> Branch("value",&bvalue);
-  tree -> Branch("error",&berror);
-  tree -> Branch("error1",&berror1);
-  tree -> Branch("error2",&berror2);
-  tree -> Branch("error3",&berror3);
-  tree -> Branch("error4",&berror4);
-  tree -> Branch("error5",&berror5);
+  tree -> SetBranchAddress("x",&bx);
+  tree -> SetBranchAddress("x1",&bx1);
+  tree -> SetBranchAddress("x2",&bx2);
+  tree -> SetBranchAddress("value",&bvalue);
+  tree -> SetBranchAddress("error",&berror);
+  tree -> SetBranchAddress("error1",&berror1);
+  tree -> SetBranchAddress("error2",&berror2);
+  tree -> SetBranchAddress("error3",&berror3);
+  tree -> SetBranchAddress("error4",&berror4);
+  tree -> SetBranchAddress("error5",&berror5);
   auto nPoints = tree -> GetEntries();
   for (auto iPoint=0; iPoint<nPoints; ++iPoint) {
     tree -> GetEntry(iPoint);
     epoint point1(bx, bx1, bx2, bvalue, berror1, berror2, berror3, berror4, berror5);
     fPoints.push_back(point1);
   }
-  make();
+  //make();
+}
+
+void ejungwoo::edata::writeTree(TFile *file, TString nameTree, TString ttlTree)
+{
+  //kb_debug << "=====================================================" << endl;
+  //kb_debug << "writeTree" << file << " " << nameTree << " " << ttlTree << endl;
+  //kb_debug << "=====================================================" << endl;
+
+  file -> cd();
+  TTree *tree = new TTree(nameTree,ttlTree);
+  double bx, bx1, bx2, bvalue, berror;
+  //double berror1, berror2, berror3, berror4, berror5;
+  tree -> Branch("x",&bx);
+  tree -> Branch("x1",&bx1);
+  tree -> Branch("x2",&bx2);
+  tree -> Branch("value",&bvalue);
+  tree -> Branch("error",&berror);
+  //tree -> Branch("e1",&berror1);
+  //tree -> Branch("e2",&berror2);
+  //tree -> Branch("e3",&berror3);
+  //tree -> Branch("e4",&berror4);
+  //tree -> Branch("e5",&berror5);
+  fBinning.reset();
+  while (fBinning.next()) {
+    bx = fPoints[fBinning.ii()].x();
+    bx1 = fPoints[fBinning.ii()].x(1);
+    bx2 = fPoints[fBinning.ii()].x(2);
+    bvalue = fPoints[fBinning.ii()].value();
+    berror = fPoints[fBinning.ii()].error();
+    //kb_debug << berror << endl;
+    //berror1 = fPoints[fBinning.ii()].error(1);
+    //berror2 = fPoints[fBinning.ii()].error(2);
+    //berror3 = fPoints[fBinning.ii()].error(3);
+    //berror4 = fPoints[fBinning.ii()].error(4);
+    //berror5 = fPoints[fBinning.ii()].error(5);
+    tree -> Fill();
+    //kb_debug << "WWWWWWWWWWWWWWW " << bx << " " << bx1 << " " << bx2 << endl;
+    //kb_debug << bx << " " << bx1 << " " << bx2 << " " << bvalue << " " << berror << " " << berror1 << " " << berror2 << " " << berror3 << " " << berror4 << " " << berror5 << endl;
+  }
+  file -> cd();
+  //if (fDataObj!=nullptr) fDataObj -> Write();
+  //kb_debug << file << endl;
+  //kb_debug << "...........2" << endl;
+  cout_info << "Writting " << tree -> GetName() << " to " << file -> GetName() << endl;
+  tree -> Write();
+  //kb_debug << "=====================================================" << endl;
 }
 
 void ejungwoo::edata::write(TString nameFile, TString format)
 {
   auto nPoints = fPoints.size();
   if (nPoints==0) return;
-  if (fDataHist==nullptr) make();
+  //if (fDataObj==nullptr) make();
 
   if (nameFile.Index(".")<0) nameFile = nameFile + ".root";
   if (nameFile.Index("/")<0) {
@@ -964,35 +1107,8 @@ void ejungwoo::edata::write(TString nameFile, TString format)
 
   if (nameFile.EndsWith(".root")) {
     TFile *fileData = new TFile(nameFile,"recreate");
-    TTree *tree = new TTree("data1","ejungwoo::edata");
-    double bx, bx1, bx2, bvalue, berror, berror1, berror2, berror3, berror4, berror5;
-    tree -> SetBranchAddress("x",&bx);
-    tree -> SetBranchAddress("x1",&bx1);
-    tree -> SetBranchAddress("x2",&bx2);
-    tree -> SetBranchAddress("value",&bvalue);
-    tree -> SetBranchAddress("error",&berror);
-    tree -> SetBranchAddress("error1",&berror1);
-    tree -> SetBranchAddress("error2",&berror2);
-    tree -> SetBranchAddress("error3",&berror3);
-    tree -> SetBranchAddress("error4",&berror4);
-    tree -> SetBranchAddress("error5",&berror5);
-    fBinning.reset();
-    while (fBinning.next()) {
-      bx = fPoints[fBinning.ii()].x();
-      bx1 = fPoints[fBinning.ii()].x(1);
-      bx2 = fPoints[fBinning.ii()].x(2);
-      bvalue = fPoints[fBinning.ii()].value();
-      berror = fPoints[fBinning.ii()].error();
-      berror1 = fPoints[fBinning.ii()].error(1);
-      berror2 = fPoints[fBinning.ii()].error(2);
-      berror3 = fPoints[fBinning.ii()].error(3);
-      berror4 = fPoints[fBinning.ii()].error(4);
-      berror5 = fPoints[fBinning.ii()].error(5);
-      tree -> Fill();
-    }
-    fileData -> cd();
-    if (fDataHist!=nullptr) fDataHist -> Write();
-    tree -> Write();
+    //kb_debug << "write tree" << endl;
+    writeTree(fileData);
   }
   else {
     ofstream fileData(nameFile.Data());
@@ -1017,12 +1133,13 @@ TGraphErrors *ejungwoo::edata::getErrorGraph(int ierror) {
   auto graph = new TGraphErrors();
   fBinning.reset();
   while (fBinning.next()) {
-    cout << fBinning.val() << " " << fPoints[fBinning.hi()].value() << " " << fPoints[fBinning.hi()].error() << endl;
+    cout_info << fBinning.val() << " " << fPoints[fBinning.hi()].value() << " " << fPoints[fBinning.hi()].error() << endl;
     graph -> SetPoint(fBinning.ii(),fBinning.val(),fPoints[fBinning.hi()].error(ierror));
   }
   return graph;
 }
 
+/*
 void ejungwoo::edata::make()
 {
   auto nPoints = fPoints.size();
@@ -1044,12 +1161,12 @@ void ejungwoo::edata::make()
       x2 = fPoints[nPoints-1].x() + dx;
     }
     fBinning = binning(nPoints,x1,x2);
-    fDataHist = fBinning.newHist();
+    fDataObj = fBinning.newHist();
     fDataGraph = new TGraphErrors();
     fBinning.reset();
     while (fBinning.next()) {
-      fDataHist -> SetBinContent(fBinning.hi(),fPoints[fBinning.hi()].value());
-      fDataHist -> SetBinError  (fBinning.hi(),fPoints[fBinning.hi()].error());
+      fDataObj -> SetBinContent(fBinning.hi(),fPoints[fBinning.hi()].value());
+      fDataObj -> SetBinError  (fBinning.hi(),fPoints[fBinning.hi()].error());
       fDataGraph -> SetPoint(fBinning.ii(),fBinning.val(),fPoints[fBinning.hi()].value());
       fDataGraph -> SetPointError(fBinning.ii(),fBinning.width()/2.,fPoints[fBinning.hi()].error());
       cout << "make " << fBinning.val() << " " << fPoints[fBinning.hi()].value() << " " << fPoints[fBinning.hi()].error() << endl;
@@ -1058,10 +1175,46 @@ void ejungwoo::edata::make()
   else {// TODO
   }
 }
+*/
 
-void ejungwoo::edata::initData(TH1D *hist) {
+void ejungwoo::edata::initGraphErrors(TGraphErrors *graph) {
   init();
-  //fName = hist -> GetName();
+  setGraphErrors(graph);
+  //kb_debug << "edata::initGraphErrors 1111111111111111" << endl;
+  fBinning = binning(graph);
+  //kb_debug << "edata::initGraphErrors 22222222222" << endl;
+  fBinning.reset();
+  while (fBinning.next()) {
+    double xx, vv;
+    graph -> GetPoint(fBinning.ii(),xx,vv);
+    double ex = graph -> GetErrorX(fBinning.ii());
+    double ey = graph -> GetErrorY(fBinning.ii());
+    epoint point1(xx,xx-0.5*ex,xx+0.5*ex,vv,ey,0);
+    //kb_debug << "GGGGGGGGGGGGGGGGG " << xx << " " << xx-0.5*ex << " " << xx+0.5*ex << " " << vv << " " << ey << " " << 0 << endl;
+    //kb_debug << ey << endl;
+    fPoints.push_back(point1);
+  }
+  //kb_debug << "edata::initGraphErrors 33333333333" << endl;
+}
+
+void ejungwoo::edata::initGraph(TGraph *graph) {
+  init();
+  setGraph(graph);
+  //kb_debug << "edata::initGraph 4444444444444444" << endl;
+  fBinning = binning(graph);
+  //kb_debug << "edata::initGraph 5555555555555555" << endl;
+  fBinning.reset();
+  while (fBinning.next()) {
+    double xx, vv;
+    graph -> GetPoint(fBinning.ii(),xx,vv);
+    epoint point1(xx,0,0,vv,0,0);
+    //kb_debug << "ggggggggggggggggg " << endl;
+    fPoints.push_back(point1);
+  }
+}
+
+void ejungwoo::edata::initHist(TH1D *hist) {
+  init();
   setHist(hist);
   fBinning = binning(hist);
   fBinning.reset();
@@ -1103,7 +1256,7 @@ ejungwoo::edata ejungwoo::edata::makeError(TH1D *hist)
     double x2 = fBinning.high();
     double vv = hist -> GetBinContent(fBinning.hi());
     double e1 = 100 * vv * hist -> GetBinError(fBinning.hi());
-    double e2 = fDataHist -> Interpolate(xx);
+    double e2 = hist -> Interpolate(xx);
     epoint point1(xx,x1,x2,vv,e1,e2);
     double ee = point1.errorv();
     hist -> SetBinError(fBinning.hi(),ee);
@@ -2189,7 +2342,7 @@ void ejungwoo::saveRoot(TObject *obj, TString nameFile, TString nameVersion, boo
     else cvs -> Write();
     if (savePrimitives) {
       TObjArray nameArray;
-      TObjArray nameArray2;
+      TObjArray laterNames;
       TObjArray laterArray;
       auto list = cvs -> GetListOfPrimitives();
       TIter next(list);
@@ -2211,7 +2364,7 @@ void ejungwoo::saveRoot(TObject *obj, TString nameFile, TString nameVersion, boo
         else if (nameObj=="TGraph") nameObj = "graph";
         else if (nameObj=="TMarker") nameObj = "marker";
         else if (nameObj=="TPaveText") nameObj = "pavet";
-        else if (nameObj=="TGraphErrors") nameObj = "graphe";
+        //else if (nameObj=="TGraphErrors") nameObj = "graphe";
         else if (nameObj=="TPave") { 
           if (prim->InheritsFrom(TLegend::Class())) nameObj = "legend";
           else nameObj = "pave";
@@ -2229,7 +2382,7 @@ void ejungwoo::saveRoot(TObject *obj, TString nameFile, TString nameVersion, boo
         auto named = new TNamed(nameObj.Data(),"");
         nameArray.Add(named);
         if (className.Sizeof()>9) {
-          nameArray2.Add(named);
+          laterNames.Add(named);
           laterArray.Add(prim);
         }
         else
@@ -2238,7 +2391,7 @@ void ejungwoo::saveRoot(TObject *obj, TString nameFile, TString nameVersion, boo
       auto numLater = laterArray.GetEntriesFast();
       for (auto iLater=0; iLater<numLater; ++iLater) {
         auto prim = laterArray.At(iLater);
-        prim -> Write(nameArray2.At(iLater) -> GetName());
+        prim -> Write(laterNames.At(iLater) -> GetName());
       }
     }
     if (fileOut==nullptr)
@@ -2288,6 +2441,138 @@ void ejungwoo::saveAll(TString nameVersion) {
   saveRoot(nameVersion,1,1);
 }
 
+void ejungwoo::dumpData(TString nameVersion, bool simplifyNames) { dumDataRoot((TObject*)nullptr, "", nameVersion, simplifyNames); }
+
+void ejungwoo::dumDataRoot(TObject *obj, TString nameFile, TString nameVersion, bool simplifyNames)
+{
+  nameVersion = makeNameVersion(nameVersion);
+  TString pathToData = nameVersion + "/dump/";
+  gSystem -> mkdir(pathToData);
+
+  TFile *fileOut = nullptr;
+
+  if (obj==nullptr) {
+    int numCanvases = 0;
+    if (fCanvasArray!=nullptr)
+      numCanvases = fCanvasArray -> GetEntriesFast();
+    for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
+      auto cvs = (TCanvas *) fCanvasArray -> At(iCanvas);
+      dumpCanvasRoot(cvs, fileOut, pathToData, simplifyNames);
+    }
+  }
+  else if (obj->InheritsFrom(TPad::Class())) {
+    dumpCanvasRoot((TPad *) obj, fileOut, pathToData, simplifyNames);
+  }
+  else {
+    if (nameFile.IsNull()) nameFile = obj -> GetName();
+    nameFile = pathToData + nameFile;
+    if (nameFile.EndsWith(".root")) nameFile = nameFile + ".root";
+    if (fVerboseLevel>=verboseLevel::kNormal)
+      cout_info << "Creating " << nameFile << endl;
+    fileOut = new TFile(nameFile, "recreate");
+         if (obj->InheritsFrom(TH1::Class()))          { edata(obj).writeTree(fileOut); }
+    else if (obj->InheritsFrom(TGraphErrors::Class())) { edata(obj).writeTree(fileOut); }
+    else if (obj->InheritsFrom(TGraph::Class()))       { edata(obj).writeTree(fileOut); }
+
+    fileOut -> Close();
+  }
+}
+
+void ejungwoo::dumpCanvasRoot(TPad *pad, TFile *fileOut, TString pathToData, bool simplifyNames, int padNumber)
+{
+  pad -> Modified();
+  pad -> Update();
+
+  if (fileOut==nullptr) {
+    TString nameCvsFile = pathToData+pad->GetName()+".root";
+    if (fVerboseLevel>=verboseLevel::kNormal)
+      cout_info << "Creating " << nameCvsFile << endl;
+    fileOut = new TFile(nameCvsFile,"recreate");
+  }
+
+  auto list = pad -> GetListOfPrimitives();
+
+  TIter next(list);
+  int countHist = 0;
+  int countGraph = 0;
+  int countGraphE = 0;
+  int countPad = 0;
+
+  TString namePad = pad -> GetName();
+
+  while (auto prim = next())
+  {
+    TString nameObj = prim -> GetName();
+    TString className = prim -> ClassName();
+
+    TString nameTree = nameObj;
+    if (padNumber>0) {
+      nameTree = "pad";
+      nameTree = nameTree + padNumber + "_" + nameObj;
+    }
+
+    TString ttlTree = className;
+
+    if (simplifyNames) {
+      nameTree = "";
+      if (padNumber>0) {
+        nameTree = "pad";
+        nameTree = nameTree + padNumber;
+      }
+           if (prim->InheritsFrom(TH1::Class()))          { nameTree = nameTree + "_hist"+countHist; countHist++; }
+      else if (prim->InheritsFrom(TGraphErrors::Class())) { nameTree = nameTree + "_graph"+countGraph; countGraph++; }
+      else if (prim->InheritsFrom(TGraph::Class()))       { nameTree = nameTree + "_graphe"+countGraphE; countGraphE++; }
+    }
+
+    if (prim->InheritsFrom(TH1::Class()) || prim->InheritsFrom(TGraphErrors::Class()) || prim->InheritsFrom(TGraph::Class()))
+    {
+      //kb_debug << "+++++++++++++++++++++++++++++++++++++++++++++++++++++" << endl;
+      //kb_debug << "the primitivie is " << prim << " " << prim->ClassName() << " " << fileOut << " " << pathToData << " " << simplifyNames << endl;
+      //kb_debug << fileOut << endl;
+      if (prim->InheritsFrom(TH1::Class())) {
+        //kb_debug << "TH1" << endl;
+        edata data1(prim);
+        data1.writeTree(fileOut, nameTree, ttlTree);
+      }
+      else if (prim->InheritsFrom(TGraphErrors::Class())) {
+        //kb_debug << " _______________________--------------------___________________ TGraphErrors" << endl;
+        edata data1(prim);
+        //kb_debug << "TGraphErrors IIIIIIIIIIIIIIIIII" << endl;
+        data1.writeTree(fileOut, nameTree, ttlTree);
+        //kb_debug << "TGraphErrors EEEEEEEEEEEEEEEEEE" << endl;
+      }
+      else if (prim->InheritsFrom(TGraph::Class())) {
+        //kb_debug << " _______________________--------------------___________________ TGraph" << endl;
+        edata data1(prim);
+        data1.writeTree(fileOut, nameTree, ttlTree);
+        //kb_debug << "TGraphErrors vvvvvvvvvvvvvvvvvv" << endl;
+      }
+      //kb_debug << "+++++++++++++++++++++++++++++++++++++++++++++++++++++" << endl;
+    }
+    else if (prim->InheritsFrom(TPad::Class())) {
+      //kb_debug << "=====================================================" << endl;
+      //kb_debug << "the primitivie is pad" << prim << " " << prim->ClassName() << " " << fileOut << " " << pathToData << " " << simplifyNames << endl;
+      countPad++;
+      dumpCanvasRoot((TPad *) prim, fileOut, pathToData, simplifyNames, countPad);
+      //kb_debug << "the primitivie was pad" << endl;
+      //kb_debug << "=====================================================" << endl;
+    }
+    else
+      continue;
+  }
+
+  if (padNumber==0 && fileOut!=nullptr) {
+    cout_info << "Closing " << fileOut -> GetName() << endl;
+    fileOut -> Close();
+  }
+}
+
+void ejungwoo::dumpAll(TString nameVersion) {
+  //dumpRoot(nameVersion);
+  dumpData(nameVersion);
+}
+
+/*
 void ejungwoo::write(TObject *obj)
 {
   gSystem -> mkdir(Form("rooto"));
@@ -2297,6 +2582,7 @@ void ejungwoo::write(TObject *obj)
     cout_info << "Writting file " << fileName << "!" << endl;
   obj -> Write();
 }
+*/
 
 /// Make hist fit to the pad. If idx>0, pad where legend is drawn is selected by vpad->cd(idx). 
 /// Draw histogram before make(TH1* hist, TVirtualPad *vpad) to apply main title attribute.
