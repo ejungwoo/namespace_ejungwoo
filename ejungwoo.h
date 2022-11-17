@@ -163,10 +163,11 @@ namespace ejungwoo
   TCutG *cutg(TFile  *f, TString cut_name, TString x="x", TString y="y"); ///< set TCutG from file
   TH1 *cutg(TH1 *h, TCutG *cut); ///< recreate histogram satisfying graphical cut
 
-  TString get_value(TString array, TString skey, bool exact=false, TString token=";");
-  TString get_value(TObjArray *elements, TString skey, bool exact=false);
-  bool exist_key   (TObjArray *elements, TString skey);
-  bool exist_keyv  (TObjArray *elements, TString skey);
+  TString get_value(TString optionArray, TString skey, bool justKey=false, TString token=";");
+  TString get_value(TObjArray *elements, TString skey, bool justKey=false);
+  bool find_key    (TString optionArray, TString skey);
+  bool find_key    (TObjArray *elements, TString skey);
+  bool find_knv    (TObjArray *elements, TString skey);
   int get_valuei   (TObjArray *elements, TString skey);
   double get_valued(TObjArray *elements, TString skey);
 
@@ -190,10 +191,12 @@ namespace ejungwoo
   void saveEPS (TString nameVersion="");
   void saveAll (TString nameVersion="");
 
-  void dumpData(TString nameVersion="", bool simplifyNames=true);
-  void dumpData(TObject *obj, TString nameFile="", TString nameVersion="", bool simplifyNames=true);
-  void dumpCanvasRoot(TPad *cvs, TFile *fileOut, TString pathToData, bool simplifyNames=true, int padNumber=0);
-  void dumpAll (TString nameVersion="");
+  void dumpData(TString nameVersion="", TString option="", bool simplifyNames=true);
+  void dumpDataRaw(TFile *fileRoot, TString option);
+  TFile *dumpDataRoot(TObject *obj, TString nameFile="", TString nameVersion="", bool simplifyNames=true);
+  TFile *dumpCanvasRoot(TPad *cvs, TFile *fileOut, TString pathToData, bool simplifyNames=true, int padNumber=0, bool closeFile=true);
+
+  void dumpAll(TString nameVersion="");
 
   //void write(TObject *obj);
 };
@@ -534,7 +537,6 @@ void ejungwoo::binning::make(TGraph *graph)
     fMax = x2 + 0.5*fWidth;
   }
   else if (graph->InheritsFrom(TGraphErrors::Class())) {
-  //kb_debug << "case 2" << endl;
     fWidth = -1;
     fBinArray.Reset();
     fBinArray.Set(fNbins+1);
@@ -1010,9 +1012,26 @@ class ejungwoo::edata
     void initError(TH1D *hist);
     edata makeError(TH1D *hist);
 
+    bool isNull() { if (fPoints.size()==0) return true; return false; }
+    bool isSameX(ejungwoo::edata &data2) {
+      auto numPoints1 = getNumPoints();
+      auto numPoints2 = data2.getNumPoints();
+      //kb_debug << numPoints1 << " " << numPoints2 << endl;
+      if (numPoints1!=numPoints2) return false;
+      for (auto iPoint=0; iPoint<numPoints1; ++iPoint) {
+        auto x1 = getPoint(iPoint).x();
+        auto x2 = data2.getPoint(iPoint).x();
+        //kb_debug << ">>>>>>>>>>>>> " << x1 << " " << x2 << endl;
+        if (x1!=x2) return false;
+      }
+      return true;
+    }
+
     //void make();
     TObject *getDataObj() { return fDataObj; }
     TGraphErrors *getErrorGraph(int ierror);
+    ejungwoo::epoint getPoint(int i) { return fPoints.at(i); }
+    int getNumPoints() { return fPoints.size(); }
 
     void print(TString format="[x] #pm [dx/2] && [v] && [e1] \% && [e2] \% \\\\", TString sformat = "%f");
 
@@ -1020,28 +1039,34 @@ class ejungwoo::edata
     void write(TString nameFile, TString format="[x] #pm [dx/2] && [v] && [e1] \% && [e2] \% \\\\");
 
     void read(TString nameFile);
+    void read(TTree *tree);
 };
 
 void ejungwoo::edata::read(TString nameFile)
 {
-  init();
   TFile *file = new TFile(nameFile,"read");
   TTree *tree = (TTree *) file -> Get("data1");
+  read(tree);
+}
+
+void ejungwoo::edata::read(TTree *tree)
+{
+  init();
   double bx, bx1, bx2, bvalue, berror, berror1, berror2, berror3, berror4, berror5;
   tree -> SetBranchAddress("x",&bx);
   tree -> SetBranchAddress("x1",&bx1);
   tree -> SetBranchAddress("x2",&bx2);
   tree -> SetBranchAddress("value",&bvalue);
   tree -> SetBranchAddress("error",&berror);
-  tree -> SetBranchAddress("error1",&berror1);
-  tree -> SetBranchAddress("error2",&berror2);
-  tree -> SetBranchAddress("error3",&berror3);
-  tree -> SetBranchAddress("error4",&berror4);
-  tree -> SetBranchAddress("error5",&berror5);
+  //tree -> SetBranchAddress("error1",&berror1);
+  //tree -> SetBranchAddress("error2",&berror2);
+  //tree -> SetBranchAddress("error3",&berror3);
+  //tree -> SetBranchAddress("error4",&berror4);
+  //tree -> SetBranchAddress("error5",&berror5);
   auto nPoints = tree -> GetEntries();
   for (auto iPoint=0; iPoint<nPoints; ++iPoint) {
     tree -> GetEntry(iPoint);
-    epoint point1(bx, bx1, bx2, bvalue, berror1, berror2, berror3, berror4, berror5);
+    epoint point1(bx, bx1, bx2, bvalue, berror, berror1, berror2, berror3, berror4);
     fPoints.push_back(point1);
   }
   //make();
@@ -1049,10 +1074,6 @@ void ejungwoo::edata::read(TString nameFile)
 
 void ejungwoo::edata::writeTree(TFile *file, TString nameTree, TString ttlTree)
 {
-  //kb_debug << "=====================================================" << endl;
-  //kb_debug << "writeTree" << file << " " << nameTree << " " << ttlTree << endl;
-  //kb_debug << "=====================================================" << endl;
-
   file -> cd();
   TTree *tree = new TTree(nameTree,ttlTree);
   double bx, bx1, bx2, bvalue, berror;
@@ -1081,16 +1102,10 @@ void ejungwoo::edata::writeTree(TFile *file, TString nameTree, TString ttlTree)
     //berror4 = fPoints[fBinning.ii()].error(4);
     //berror5 = fPoints[fBinning.ii()].error(5);
     tree -> Fill();
-    //kb_debug << "WWWWWWWWWWWWWWW " << bx << " " << bx1 << " " << bx2 << endl;
-    //kb_debug << bx << " " << bx1 << " " << bx2 << " " << bvalue << " " << berror << " " << berror1 << " " << berror2 << " " << berror3 << " " << berror4 << " " << berror5 << endl;
   }
   file -> cd();
-  //if (fDataObj!=nullptr) fDataObj -> Write();
-  //kb_debug << file << endl;
-  //kb_debug << "...........2" << endl;
   cout_info << "Writting " << tree -> GetName() << " to " << file -> GetName() << endl;
   tree -> Write();
-  //kb_debug << "=====================================================" << endl;
 }
 
 void ejungwoo::edata::write(TString nameFile, TString format)
@@ -1189,6 +1204,7 @@ void ejungwoo::edata::initGraphErrors(TGraphErrors *graph) {
     graph -> GetPoint(fBinning.ii(),xx,vv);
     double ex = graph -> GetErrorX(fBinning.ii());
     double ey = graph -> GetErrorY(fBinning.ii());
+    if (ex==0) ex = fBinning.width(); //TODO
     epoint point1(xx,xx-0.5*ex,xx+0.5*ex,vv,ey,0);
     //kb_debug << "GGGGGGGGGGGGGGGGG " << xx << " " << xx-0.5*ex << " " << xx+0.5*ex << " " << vv << " " << ey << " " << 0 << endl;
     //kb_debug << ey << endl;
@@ -2441,9 +2457,13 @@ void ejungwoo::saveAll(TString nameVersion) {
   saveRoot(nameVersion,1,1);
 }
 
-void ejungwoo::dumpData(TString nameVersion, bool simplifyNames) { dumDataRoot((TObject*)nullptr, "", nameVersion, simplifyNames); }
+void ejungwoo::dumpData(TString nameVersion, TString option, bool simplifyNames)
+{
+  TFile *fileOut = dumpDataRoot((TObject*)nullptr, "", nameVersion, simplifyNames);
+  dumpDataRaw(fileOut, option);
+}
 
-void ejungwoo::dumDataRoot(TObject *obj, TString nameFile, TString nameVersion, bool simplifyNames)
+TFile *ejungwoo::dumpDataRoot(TObject *obj, TString nameFile, TString nameVersion, bool simplifyNames)
 {
   nameVersion = makeNameVersion(nameVersion);
   TString pathToData = nameVersion + "/dump/";
@@ -2457,11 +2477,11 @@ void ejungwoo::dumDataRoot(TObject *obj, TString nameFile, TString nameVersion, 
       numCanvases = fCanvasArray -> GetEntriesFast();
     for (auto iCanvas=0; iCanvas<numCanvases; ++iCanvas) {
       auto cvs = (TCanvas *) fCanvasArray -> At(iCanvas);
-      dumpCanvasRoot(cvs, fileOut, pathToData, simplifyNames);
+      fileOut = dumpCanvasRoot(cvs, fileOut, pathToData, simplifyNames, 0, false);
     }
   }
   else if (obj->InheritsFrom(TPad::Class())) {
-    dumpCanvasRoot((TPad *) obj, fileOut, pathToData, simplifyNames);
+    fileOut = dumpCanvasRoot((TPad *) obj, fileOut, pathToData, simplifyNames, 0, false);
   }
   else {
     if (nameFile.IsNull()) nameFile = obj -> GetName();
@@ -2473,12 +2493,66 @@ void ejungwoo::dumDataRoot(TObject *obj, TString nameFile, TString nameVersion, 
          if (obj->InheritsFrom(TH1::Class()))          { edata(obj).writeTree(fileOut); }
     else if (obj->InheritsFrom(TGraphErrors::Class())) { edata(obj).writeTree(fileOut); }
     else if (obj->InheritsFrom(TGraph::Class()))       { edata(obj).writeTree(fileOut); }
+  }
 
-    fileOut -> Close();
+  return fileOut;
+}
+
+void ejungwoo::dumpDataRaw(TFile *fileRoot, TString option)
+{
+  bool print_hist = true;
+  bool print_graph = true;
+  if (find_key(option,"graph_only")) { print_hist = false; print_graph = true; }
+  if (find_key(option,"hist_only"))  { print_hist = true; print_graph = false; }
+
+  edata data1;
+  edata data2;
+
+  TString nameRaw = fileRoot->GetName();
+  nameRaw.ReplaceAll(".root",".dat");
+  cout_info << "Creating data file " << nameRaw << endl;
+  ofstream fileRaw(nameRaw);
+
+  auto listOfTree = fileRoot -> GetListOfKeys();
+  TIter next(listOfTree);
+  while (auto key = (TKey *) next())
+  {
+    auto tree = (TTree *) key -> ReadObj();
+    if (!print_hist && TString(tree -> GetTitle()).Index("TH")>=0) continue;
+    if (!print_graph && TString(tree -> GetTitle()).Index("TGraph")>=0) continue;
+
+    data1.read(tree);
+
+    bool printNewX = false;
+    if (data2.isNull() || (!data2.isNull() && !data1.isSameX(data2))) {
+      printNewX = true;
+    }
+
+    auto numPoints = data1.getNumPoints();
+
+    if (printNewX) {
+      fileRaw << std::left << setw(15) << "" << "," << "x , " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << setw(12) << data1.getPoint(iPoint).x(0) << ","; fileRaw << endl;
+      fileRaw << std::left << setw(15) << "" << "," << "x1, " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << setw(12) << data1.getPoint(iPoint).x(1) << ","; fileRaw << endl;
+      fileRaw << std::left << setw(15) << "" << "," << "x2, " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << setw(12) << data1.getPoint(iPoint).x(2) << ","; fileRaw << endl;
+      //cout << std::left setw(15) << "" << "x  " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) cout << setw(12) << data1.getPoint(iPoint).x(0); cout << endl;
+      //cout << std::left setw(15) << "" << "x1 " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) cout << setw(12) << data1.getPoint(iPoint).x(1); cout << endl;
+      //cout << std::left setw(15) << "" << "x2 " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) cout << setw(12) << data1.getPoint(iPoint).x(2); cout << endl;
+      //fileRaw << " , x , "; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << data1.getPoint(iPoint).x(0) << ", "; fileRaw << endl;
+      //fileRaw << " , x1, "; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << data1.getPoint(iPoint).x(1) << ", "; fileRaw << endl;
+      //fileRaw << " , x2, "; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << data1.getPoint(iPoint).x(2) << ", "; fileRaw << endl;
+    }
+    fileRaw << std::left; fileRaw << setw(15) << tree -> GetName() << "," << "vv, "; fileRaw << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << setw(12) << data1.getPoint(iPoint).value() << ","; fileRaw << endl;
+    fileRaw << std::left; fileRaw << setw(15) << ""                << "," << "ee, "; fileRaw << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << setw(12) << data1.getPoint(iPoint).error() << ","; fileRaw << endl;
+    //cout << std::left; fileRaw << setw(15) << tree -> GetName() << "vv "; cout << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << setw(12) << data1.getPoint(iPoint).value(); fileRaw << endl;
+    //cout << std::left; fileRaw << setw(15) << ""                << "ee "; cout << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << setw(12) << data1.getPoint(iPoint).error(); fileRaw << endl;
+    //fileRaw << tree -> GetName() << ", vv, "; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << setw(12) << data1.getPoint(iPoint).value() << ", "; fileRaw << endl;
+    //fileRaw << " "               << ", ee, "; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileRaw << setw(12) << data1.getPoint(iPoint).error() << ", "; fileRaw << endl;
+
+    data2 = data1;
   }
 }
 
-void ejungwoo::dumpCanvasRoot(TPad *pad, TFile *fileOut, TString pathToData, bool simplifyNames, int padNumber)
+TFile *ejungwoo::dumpCanvasRoot(TPad *pad, TFile *fileOut, TString pathToData, bool simplifyNames, int padNumber, bool closeFile)
 {
   pad -> Modified();
   pad -> Update();
@@ -2561,14 +2635,15 @@ void ejungwoo::dumpCanvasRoot(TPad *pad, TFile *fileOut, TString pathToData, boo
       continue;
   }
 
-  if (padNumber==0 && fileOut!=nullptr) {
+  if (closeFile && padNumber==0) {
     cout_info << "Closing " << fileOut -> GetName() << endl;
     fileOut -> Close();
   }
+
+  return fileOut;
 }
 
 void ejungwoo::dumpAll(TString nameVersion) {
-  //dumpRoot(nameVersion);
   dumpData(nameVersion);
 }
 
@@ -3285,43 +3360,43 @@ TObject *ejungwoo::att(TObject *obj, int idx, TString nameConf)
     auto elements = sNameConf.Tokenize(";");
     sNameConf = ((TObjString *) elements->At(0))->GetString();
 
-    if(exist_keyv(elements,"vlz")) vlz = get_valuei(elements,"vlz");
-    if(exist_keyv(elements,"vls")) vls = get_valuei(elements,"vls");
-    if(exist_keyv(elements,"vlc")) vlc = get_valuei(elements,"vlc");
-    if(exist_keyv(elements,"vmz")) vmz = get_valued(elements,"vmz");
-    if(exist_keyv(elements,"vms")) vms = get_valuei(elements,"vms");
-    if(exist_keyv(elements,"vmc")) vmc = get_valuei(elements,"vmc");
-    if(exist_keyv(elements,"vfs")) vfs = get_valuei(elements,"vfs");
-    if(exist_keyv(elements,"vfc")) vfc = get_valuei(elements,"vfc");
-    if(exist_keyv(elements,"vtz")) vtz = get_valued(elements,"vtz");
-    if(exist_keyv(elements,"vta")) vta = get_valuei(elements,"vta");
-    if(exist_keyv(elements,"vts")) vtf = get_valuei(elements,"vts");
-    if(exist_keyv(elements,"vtf")) vtf = get_valuei(elements,"vtf");
-    if(exist_keyv(elements,"vtc")) vtc = get_valuei(elements,"vtc");
+    if(find_knv(elements,"vlz")) vlz = get_valuei(elements,"vlz");
+    if(find_knv(elements,"vls")) vls = get_valuei(elements,"vls");
+    if(find_knv(elements,"vlc")) vlc = get_valuei(elements,"vlc");
+    if(find_knv(elements,"vmz")) vmz = get_valued(elements,"vmz");
+    if(find_knv(elements,"vms")) vms = get_valuei(elements,"vms");
+    if(find_knv(elements,"vmc")) vmc = get_valuei(elements,"vmc");
+    if(find_knv(elements,"vfs")) vfs = get_valuei(elements,"vfs");
+    if(find_knv(elements,"vfc")) vfc = get_valuei(elements,"vfc");
+    if(find_knv(elements,"vtz")) vtz = get_valued(elements,"vtz");
+    if(find_knv(elements,"vta")) vta = get_valuei(elements,"vta");
+    if(find_knv(elements,"vts")) vtf = get_valuei(elements,"vts");
+    if(find_knv(elements,"vtf")) vtf = get_valuei(elements,"vtf");
+    if(find_knv(elements,"vtc")) vtc = get_valuei(elements,"vtc");
 
-    if (!exist_key(elements,"ll")) {
-      if(exist_key(elements,"lz")) olz=idx; else if(exist_keyv(elements,"lz")) olz=get_valuei(elements,"lz"); else olz=-1; 
-      if(exist_key(elements,"ls")) ols=idx; else if(exist_keyv(elements,"ls")) ols=get_valuei(elements,"ls"); else ols=-1; 
-      if(exist_key(elements,"lc")) olc=idx; else if(exist_keyv(elements,"lc")) olc=get_valuei(elements,"lc"); else olc=-1; 
+    if (!find_key(elements,"ll")) {
+      if(find_key(elements,"lz")) olz=idx; else if(find_knv(elements,"lz")) olz=get_valuei(elements,"lz"); else olz=-1;
+      if(find_key(elements,"ls")) ols=idx; else if(find_knv(elements,"ls")) ols=get_valuei(elements,"ls"); else ols=-1;
+      if(find_key(elements,"lc")) olc=idx; else if(find_knv(elements,"lc")) olc=get_valuei(elements,"lc"); else olc=-1;
     }
-    if (!exist_key(elements,"mm")) {
-      if(exist_key(elements,"mz")) omz=idx; else if(exist_keyv(elements,"mz")) omz=get_valuei(elements,"mz"); else omz=-1; 
-      if(exist_key(elements,"ms")) oms=idx; else if(exist_keyv(elements,"ms")) oms=get_valuei(elements,"ms"); else oms=-1; 
-      if(exist_key(elements,"mc")) omc=idx; else if(exist_keyv(elements,"mc")) omc=get_valuei(elements,"mc"); else omc=-1; 
+    if (!find_key(elements,"mm")) {
+      if(find_key(elements,"mz")) omz=idx; else if(find_knv(elements,"mz")) omz=get_valuei(elements,"mz"); else omz=-1;
+      if(find_key(elements,"ms")) oms=idx; else if(find_knv(elements,"ms")) oms=get_valuei(elements,"ms"); else oms=-1;
+      if(find_key(elements,"mc")) omc=idx; else if(find_knv(elements,"mc")) omc=get_valuei(elements,"mc"); else omc=-1;
     }
-    if (!exist_key(elements,"ff")) {
-      if(exist_key(elements,"fs")) ofs=idx; else if(exist_keyv(elements,"fs")) ofs=get_valuei(elements,"fs"); else ofs=-1; 
-      if(exist_key(elements,"fc")) ofc=idx; else if(exist_keyv(elements,"fc")) ofc=get_valuei(elements,"fc"); else ofc=-1; 
+    if (!find_key(elements,"ff")) {
+      if(find_key(elements,"fs")) ofs=idx; else if(find_knv(elements,"fs")) ofs=get_valuei(elements,"fs"); else ofs=-1;
+      if(find_key(elements,"fc")) ofc=idx; else if(find_knv(elements,"fc")) ofc=get_valuei(elements,"fc"); else ofc=-1;
     }
-    if (!exist_key(elements,"tm")) {
-      if(exist_key(elements,"tz")) otz=idx; else if(exist_keyv(elements,"tz")) otz=get_valuei(elements,"tz"); else otz=-1; 
-      if(exist_key(elements,"ts")) otf=idx; else if(exist_keyv(elements,"ts")) otf=get_valuei(elements,"ts"); else otf=-1; 
-      if(exist_key(elements,"tf")) otf=idx; else if(exist_keyv(elements,"tf")) otf=get_valuei(elements,"tf"); else otf=-1; 
-      if(exist_key(elements,"tc")) otc=idx; else if(exist_keyv(elements,"tc")) otc=get_valuei(elements,"tc"); else otc=-1; 
+    if (!find_key(elements,"tm")) {
+      if(find_key(elements,"tz")) otz=idx; else if(find_knv(elements,"tz")) otz=get_valuei(elements,"tz"); else otz=-1;
+      if(find_key(elements,"ts")) otf=idx; else if(find_knv(elements,"ts")) otf=get_valuei(elements,"ts"); else otf=-1;
+      if(find_key(elements,"tf")) otf=idx; else if(find_knv(elements,"tf")) otf=get_valuei(elements,"tf"); else otf=-1;
+      if(find_key(elements,"tc")) otc=idx; else if(find_knv(elements,"tc")) otc=get_valuei(elements,"tc"); else otc=-1;
     }
-    if (exist_keyv(elements,"xmz")) xmz = get_valued(elements,"xmz");
-    if (exist_keyv(elements,"xtz")) xtz = get_valued(elements,"xtz");
-    if (exist_key(elements,"cc")) { olc=idx; omc=idx; ofc=idx; otc=idx; }
+    if (find_knv(elements,"xmz")) xmz = get_valued(elements,"xmz");
+    if (find_knv(elements,"xtz")) xtz = get_valued(elements,"xtz");
+    if (find_key(elements,"cc")) { olc=idx; omc=idx; ofc=idx; otc=idx; }
 
     if (olz==-1&&ols==-1&&olc==-1&&omz==-1&&oms==-1&&omc==-1&&ofs==-1&&ofc==-1&&otz==-1&&otf==-1&&otc==-1) {
       olz=idx; ols=idx; olc=idx; omz=idx; oms=idx; omc=idx; ofs=idx; ofc=idx; otz=idx; otf=idx; otc=idx;
@@ -3453,17 +3528,17 @@ TString ejungwoo::toString(double value, int ndigit)
   return vstring;
 }
 
-TString ejungwoo::get_value(TString array, TString skey, bool exact=false, TString token) {
+TString ejungwoo::get_value(TString array, TString skey, bool justKey=false, TString token) {
   auto elements = array.Tokenize(token);
-  return get_value(elements,skey,exact);
+  return get_value(elements,skey,justKey);
 }
 
-TString ejungwoo::get_value(TObjArray *array, TString skey, bool exact)
+TString ejungwoo::get_value(TObjArray *array, TString skey, bool justKey)
 {
   TIter next(array);
   while (auto elemento = (TObjString*) next()) {
     TString element = elemento -> GetString();
-    if (exact) {
+    if (justKey) {
       if (element==skey)
         return element;
     }
@@ -3484,13 +3559,20 @@ TString ejungwoo::get_value(TObjArray *array, TString skey, bool exact)
   return "";
 }
 
-bool ejungwoo::exist_key(TObjArray *elements, TString skey) {
+bool ejungwoo::find_key(TString optionArray, TString skey) {
+  auto elements = optionArray.Tokenize(";");
   auto value = get_value(elements,skey,true);
   if (value.IsNull())
     return false;
   return true;
 }
-bool ejungwoo::exist_keyv(TObjArray *elements, TString skey) {
+bool ejungwoo::find_key(TObjArray *elements, TString skey) {
+  auto value = get_value(elements,skey,true);
+  if (value.IsNull())
+    return false;
+  return true;
+}
+bool ejungwoo::find_knv(TObjArray *elements, TString skey) {
   auto value = get_value(elements,skey,false);
   if (value.IsNull())
     return false;
