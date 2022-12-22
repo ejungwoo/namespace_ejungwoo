@@ -20,7 +20,7 @@ using namespace std;
 #ifdef KEBI
 typedef KBVector3::Axis kbaxis;
 #else
-typedef TVector3 kbaxis;
+//typedef TVector3 kbaxis;
 #endif
 
 /**

@@ -1,4 +1,4 @@
-void draw_all_conf(TString selectString="att")
+void draw_all_conf(TString selectString="paper_nn")
 {
   TIter nextFile(TSystemDirectory("thisDir",".").GetListOfFiles());
   while (auto file = (TSystemFile *) nextFile())
@@ -10,10 +10,11 @@ void draw_all_conf(TString selectString="att")
     name.ReplaceAll(".par","");
     if (!selectString.IsNull() && name.Index(selectString.Data())<0) continue;
 
-    auto par = conf(name);
-
     if (name.Index("att")==0) {
-      auto numIndex = par -> GetParVInt("line_color").size();
+      auto par = getParAttribute(name);
+      //auto numIndex = par -> GetParVInt("line_color").size();
+      auto lineColors = par.lineColor;
+      auto numIndex = lineColors.size();
       auto hist = new TH2D(name,name+";;index",100,0,18,100,-.999,numIndex-.001);
       auto cvs = canvas(name,"wide");
       draw(hist,cvs);
@@ -35,6 +36,7 @@ void draw_all_conf(TString selectString="att")
       }
     }
     else {
+      auto par = getParCanvas(name);
       TCanvas *cvs;
       if (name.Index("nn")>=0)
       {
@@ -43,8 +45,8 @@ void draw_all_conf(TString selectString="att")
         auto hist2 = new TH1D(name+2,name+";x;y",10,0,10); draw(hist2,cvs->cd(2));
         auto hist3 = new TH1D(name+3,name+";x;y",10,0,10); draw(hist3,cvs->cd(3));
         auto hist4 = new TH1D(name+4,name+";x;y",10,0,10); draw(hist4,cvs->cd(4));
-        if (par -> CheckPar("side_pad")) {
-          drawef(cvs -> cd(99));
+        if (par.sidePad[0]!=0) {
+          drawef((TPad *) cvs->cd(99));
           auto legend = new TLegend();
           legend -> AddEntry(att(new TGraph(),1), "graph1", "p");
           legend -> AddEntry(att(new TGraph(),2), "graph2", "l");
