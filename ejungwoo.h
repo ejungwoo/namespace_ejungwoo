@@ -125,7 +125,7 @@ namespace ejungwoo
   TCanvas*    canvas(const char *nameCvs, int nx, int ny, const char *nameConf="");
   TCanvas*    canvas(const char *nameCvs, int nn, const char *nameConf="");
   TCanvas*    canvas(const char *nameCvs="", const char *nameConf="") { return canvas(nameCvs, 1, 1, nameConf); }
-  TCanvas*    canvas2(const char *nameCvs="", const char *nameConf="");
+  TCanvas*    canvas2(const char *nameCvs="", const char *nameConf="", bool dumpPar=false);
   int         icanvas() { return fCanvasIndex; }
   TPad*       innerpad(TVirtualPad *vpad, double xr1, double yr1, double xr2, double yr2);
   TH1*        make(TH1* hist, TVirtualPad *vpad, TString drawOption="");
@@ -311,7 +311,7 @@ class ejungwoo::binning
     TArrayD fBinArray;
 
   public:
-    binning() : fNbins(0), fMin(0), fMax(0) {}
+    binning() : fNbins(99), fMin(-9), fMax(9), fTitle("x title;y title;z title") { init(); }
     binning(int nb, double mi, double mx, const char *tl="", const char *fml="", const char *sel="") : fNbins(nb), fMin(mi), fMax(mx), fTitle(tl), fSelection(sel) { setFormula(fml); init(); }
     binning(int nb, TArrayD arr, const char *tl="", const char *fml="", const char *sel="") : fTitle(tl), fSelection(sel) { setFormula(fml); initArray(nb,arr); }
     binning(TArrayD arr, const char *ttl="", const char *fml="", const char *sel="") : binning(0, arr, ttl, fml, sel) {}
@@ -1808,7 +1808,7 @@ TCanvas *ejungwoo::canvas(const char *nameCvs, int nx, int ny, const char *nameC
   return cvs;
 }
 
-TCanvas *ejungwoo::canvas2(const char *nameCvs, const char *nameConf)
+TCanvas *ejungwoo::canvas2(const char *nameCvs, const char *nameConf, bool dumpPar)
 {
   if (strcmp(nameCvs,"")==0)
     nameCvs = Form("canvas_%d",fCanvasIndex);
@@ -1823,6 +1823,13 @@ TCanvas *ejungwoo::canvas2(const char *nameCvs, const char *nameConf)
   cvs -> SetMargin(fParCvs2.marginRatioCvsL,fParCvs2.marginRatioCvsR,fParCvs2.marginRatioCvsB,fParCvs2.marginRatioCvsT);
   if (fCanvasArray==nullptr) fCanvasArray = new TObjArray(50);
   fCanvasArray -> Add(cvs);
+
+  if (dumpPar)
+  {
+    cout_info << "nameCvs  titleCvs  fCanvasIndex*10  25+fCanvasIndex*10  fParCvs2.sizeWindowX  fParCvs2.sizeWindowY" << endl;
+    cout_info << nameCvs << "  " << titleCvs << "  " << fCanvasIndex*10 << "  " << 25+fCanvasIndex*10 << "  " << fParCvs2.sizeWindowX << "  " << fParCvs2.sizeWindowY << endl;
+  }
+
 
   for (auto iPad=0; iPad<fParCvs2.numPads; iPad++)
   {
@@ -2545,6 +2552,14 @@ void ejungwoo::dumpDataRaw(TFile *fileRoot, TString option, int type)
   if (find_knv(option,"escale"))
     escale = get_value(option, "escale").Atoi();
 
+  int vprecision = 4;
+  if (find_knv(option,"vprecision"))
+    vprecision = get_value(option, "vprecision").Atoi();
+
+  int eprecision = 4;
+  if (find_knv(option,"eprecision"))
+    eprecision = get_value(option, "eprecision").Atoi();
+
   edata data1;
   edata data2;
 
@@ -2600,11 +2615,12 @@ void ejungwoo::dumpDataRaw(TFile *fileRoot, TString option, int type)
               << "error (\\times" << escale << ") & "
               << "\\\\ \\hline" << endl;
       for (auto iPoint=0; iPoint<numPoints; ++iPoint) {
-        fileOut << setw(15) << data1.getPoint(iPoint).x(0) << "\\pm" << setw(13) << (data1.getPoint(iPoint).x(2)-data1.getPoint(iPoint).x(1))/2.
-          << " & " << setw(15) << data1.getPoint(iPoint).value() * vscale
-          << " & " << setw(15) << data1.getPoint(iPoint).error() * escale
-          << " \\\\" << endl;
+        fileOut << data1.getPoint(iPoint).x(0) << "$\\pm$" << (data1.getPoint(iPoint).x(2)-data1.getPoint(iPoint).x(1))/2.
+          << " & " << std::setprecision(vprecision) << data1.getPoint(iPoint).value() * vscale
+          << " & " << std::setprecision(vprecision) << data1.getPoint(iPoint).error() * escale
+          << " \\\\ \\hline" << endl;
       }
+      fileOut << "\\end{tabular}" << endl;
       fileOut << "\\caption{" << nameFile << "  " << nameTree << "}" << endl;
       fileOut << "\\label{table_" << name0 << "_" << nameTree << "}" << endl;
       fileOut << "\\end{table}" << endl;
@@ -2618,8 +2634,8 @@ void ejungwoo::dumpDataRaw(TFile *fileRoot, TString option, int type)
         fileOut << std::left << setw(15) << "" << "," << "x high  , " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileOut << setw(12) << data1.getPoint(iPoint).x(2) << ","; fileOut << endl;
       }
       cout << nameTree << endl;
-      fileOut << std::left << nameTree << "," << "value, " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileOut << setw(12) << data1.getPoint(iPoint).value() << ","; fileOut << endl;
-      fileOut << std::left << " "      << "," << "error, " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileOut << setw(12) << data1.getPoint(iPoint).error() << ","; fileOut << endl;
+      fileOut << std::left << nameTree << "," << "value, " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileOut << std::setprecision(vprecision) << setw(12) << data1.getPoint(iPoint).value() << ","; fileOut << endl;
+      fileOut << std::left << " "      << "," << "error, " << std::right; for (auto iPoint=0; iPoint<numPoints; ++iPoint) fileOut << std::setprecision(vprecision) << setw(12) << data1.getPoint(iPoint).error() << ","; fileOut << endl;
     }
 
     data2 = data1;
